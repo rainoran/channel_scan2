@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{3afb405a-f3ab-4ec6-825c-8401e7f1437c}</ProjectGuid>
+    <RootNamespace>channelscan2</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>channel_scan</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <AdditionalOptions>/source-charset:utf-8 /w34296 /w14547 /w14548 /w14549 /w14555 /w34800 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>C:\json-develop\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <AdditionalOptions>/source-charset:utf-8 /w34296 /w14547 /w14548 /w14549 /w14555 /w34800 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>C:\json-develop\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <StringPooling>true</StringPooling>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <AdditionalOptions>/source-charset:utf-8 /w34296 /w14547 /w14548 /w14549 /w14555 /w34800 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>C:\json-develop\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <AdditionalOptions>/source-charset:utf-8 /w34296 /w14547 /w14548 /w14549 /w14555 /w34800 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>C:\json-develop\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <StringPooling>true</StringPooling>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="AnalyzePID.hpp" />
+    <ClInclude Include="AppRuntimeWorkState.hpp" />
+    <ClInclude Include="AppSimdAvx2.hpp" />
+    <ClInclude Include="AppSimdPolicy.hpp" />
+    <ClInclude Include="AppSimdSse2.hpp" />
+    <ClInclude Include="AppSimdSse42.hpp" />
+    <ClInclude Include="AppWorkerPool.hpp" />
+    <ClInclude Include="AppWritePriorityGate.hpp" />
+    <ClInclude Include="AribDecodecallUnit.hpp" />
+    <ClInclude Include="AribDecoder.hpp" />
+    <ClInclude Include="AribUnicodeTable_Kana.hpp" />
+    <ClInclude Include="AribUnicodeTable.hpp" />
+    <ClInclude Include="AribUnicodeTable_Latin.hpp" />
+    <ClInclude Include="AribUnicodeTable_Macro.hpp" />
+    <ClInclude Include="AribUnicodeTable_Roman.hpp" />
+    <ClInclude Include="AribUnicodeTable_Symbols.hpp" />
+    <ClInclude Include="AutoReserveRuleStore.hpp" />
+    <ClInclude Include="BATFilter.hpp" />
+    <ClInclude Include="BITFilter.hpp" />
+    <ClInclude Include="BonDriverHelper.hpp" />
+    <ClInclude Include="bondriver_load.h" />
+    <ClInclude Include="bondriver_scan.h" />
+    <ClInclude Include="BufferConstants.h" />
+    <ClInclude Include="CATFilter.hpp" />
+    <ClInclude Include="CDTFilter.hpp" />
+    <ClInclude Include="ChannelInfo.h" />
+    <ClInclude Include="channellist.hpp" />
+    <ClInclude Include="ChannelListLoader.hpp" />
+    <ClInclude Include="ChannelScanTab.hpp" />
+    <ClInclude Include="channel_scan.h" />
+    <ClInclude Include="channel_scan_GUI.hpp" />
+    <ClInclude Include="ConfigManager.h" />
+    <ClInclude Include="CPUFeature.h" />
+    <ClInclude Include="CRC32.hpp" />
+    <ClInclude Include="DebugDef.hpp" />
+    <ClInclude Include="DebugLogBuffer.hpp" />
+    <ClInclude Include="DebugManager.h" />
+    <ClInclude Include="DebugMode.hpp" />
+    <ClInclude Include="DebugMPMCLogBuffer.hpp" />
+    <ClInclude Include="DITFilter.hpp" />
+    <ClInclude Include="EitCoverage.hpp" />
+    <ClInclude Include="EITEventSortUnit.hpp" />
+    <ClInclude Include="EITEventTextAssembler.hpp" />
+    <ClInclude Include="EitEventUpdateUnit.hpp" />
+    <ClInclude Include="EITExtendedItemDebugDump.hpp" />
+    <ClInclude Include="EITFilter.hpp" />
+    <ClInclude Include="EITHtmlProgramTable.hpp" />
+    <ClInclude Include="EITTextDumpLoader.hpp" />
+    <ClInclude Include="EitTextWriter.hpp" />
+    <ClInclude Include="EitWithCoverage.hpp" />
+    <ClInclude Include="EncodingConfig.hpp" />
+    <ClInclude Include="EnumFlags.hpp" />
+    <ClInclude Include="EpgBuilder.hpp" />
+    <ClInclude Include="EpgBuild_GUI.hpp" />
+    <ClInclude Include="EpgHtmlChunkWriter.hpp" />
+    <ClInclude Include="EpgHtmlLite.hpp" />
+    <ClInclude Include="EpgHtmlLite_Common.hpp" />
+    <ClInclude Include="EpgHtmlLite_DateSplit.hpp" />
+    <ClInclude Include="EpgHtmlLite_index.hpp" />
+    <ClInclude Include="EpgHtmlLite_log.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageAutoKeywordReservationList.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageBeforeList.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageBeforeTimetable.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageKeywordSearch.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageNowList.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageNowTimetable.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageProgramMenu.hpp" />
+    <ClInclude Include="EpgHtmlLite_PageReservationList.hpp" />
+    <ClInclude Include="EpgHtmlLite_ReservationSwitch.hpp" />
+    <ClInclude Include="EpgHtmlLite_SplitGuide.hpp" />
+    <ClInclude Include="EpgHtmlPortal.hpp" />
+    <ClInclude Include="EpgHtmlPortal_Assets.hpp" />
+    <ClInclude Include="EpgHtmlPortal_Auto.hpp" />
+    <ClInclude Include="EpgHtmlPortal_Common.hpp" />
+    <ClInclude Include="EpgHtmlPortal_dynamic.hpp" />
+    <ClInclude Include="EpgHtmlPortal_index.hpp" />
+    <ClInclude Include="EpgHtmlPortal_ProgramPageWriter.hpp" />
+    <ClInclude Include="EpgHtmlPortal_ReservationData.hpp" />
+    <ClInclude Include="EpgHtmlPortal_RuntimeData.hpp" />
+    <ClInclude Include="EpgHtmlPortal_SearchData.hpp" />
+    <ClInclude Include="EpgHtmlPortal_SwitchScript.hpp" />
+    <ClInclude Include="EpgHtmlPortal_Template.hpp" />
+    <ClInclude Include="EpgHtmlWriter.hpp" />
+    <ClInclude Include="EpgIdSortUnit.hpp" />
+    <ClInclude Include="EpgManualTab.hpp" />
+    <ClInclude Include="EpgMergeUnit.hpp" />
+    <ClInclude Include="EpgModel.hpp" />
+    <ClInclude Include="EpgPortalReservationApiServer.hpp" />
+    <ClInclude Include="EpgTaskController.hpp" />
+    <ClInclude Include="Epg_archive_save.hpp" />
+    <ClInclude Include="FilterManager.hpp" />
+    <ClInclude Include="FilterManagerRunner.hpp" />
+    <ClInclude Include="FilterPostBuffer.hpp" />
+    <ClInclude Include="GuiActions.hpp" />
+    <ClInclude Include="GuiDebugLogPipe.hpp" />
+    <ClInclude Include="GuiServiceSnapshot.hpp" />
+    <ClInclude Include="IBonDriver.h" />
+    <ClInclude Include="IBonDriver2.h" />
+    <ClInclude Include="InfoLogManager.h" />
+    <ClInclude Include="ITSFilter.hpp" />
+    <ClInclude Include="MainUI.hpp" />
+    <ClInclude Include="MathOps.h" />
+    <ClInclude Include="MPMCRingBuffer.hpp" />
+    <ClInclude Include="MultiTunerTaskRunner.hpp" />
+    <ClInclude Include="NBITFilter.hpp" />
+    <ClInclude Include="NetworkSettingsTab.hpp" />
+    <ClInclude Include="NITFilter.hpp" />
+    <ClInclude Include="NITNetworkInfo.hpp" />
+    <ClInclude Include="OperationLogManager.h" />
+    <ClInclude Include="OperationMPMCLogBuffer.hpp" />
+    <ClInclude Include="OSScan.h" />
+    <ClInclude Include="PacketCounter.h" />
+    <ClInclude Include="PacketDumpManager.hpp" />
+    <ClInclude Include="PacketDumpRingBuffer.hpp" />
+    <ClInclude Include="PATFilter.hpp" />
+    <ClInclude Include="PayloadSlotBuffer.hpp" />
+    <ClInclude Include="PCScan.h" />
+    <ClInclude Include="PhysicalChannelListBuilder.hpp" />
+    <ClInclude Include="PluginTab.hpp" />
+    <ClInclude Include="PMTFilter.hpp" />
+    <ClInclude Include="PrintUtil.hpp" />
+    <ClInclude Include="RecordingEitAnalyzer.hpp" />
+    <ClInclude Include="Reservation_CommitBridge.hpp" />
+    <ClInclude Include="Reservation_EpgRebuildAction.hpp" />
+    <ClInclude Include="ReservationSettingsTab.hpp" />
+    <ClInclude Include="ReservationTvTestWatchTest.hpp" />
+    <ClInclude Include="Reservation_EitMonitor.hpp" />
+    <ClInclude Include="Reservation_ExecutionManager.hpp" />
+    <ClInclude Include="Reservation_ExecutionSettings.hpp" />
+    <ClInclude Include="Reservation_ProgramTimeUtil.hpp" />
+    <ClInclude Include="Reservation_RawTsRecorder.hpp" />
+    <ClInclude Include="Reservation_TargetVerifier.hpp" />
+    <ClInclude Include="Reservation_TvTestController.hpp" />
+    <ClInclude Include="ReturnArg.hpp" />
+    <ClInclude Include="RingBuffer.hpp" />
+    <ClInclude Include="MPMCRingBufferTest.hpp" />
+    <ClInclude Include="RSTFilter.hpp" />
+    <ClInclude Include="RuntimeFlags.hpp" />
+    <ClInclude Include="SDTFilter.hpp" />
+    <ClInclude Include="SectionSorter.hpp" />
+    <ClInclude Include="SectionTracker.hpp" />
+    <ClInclude Include="ServiceInfo.hpp" />
+    <ClInclude Include="SettingsTab.hpp" />
+    <ClInclude Include="SIMDData.hpp" />
+    <ClInclude Include="SIMDselect.h" />
+    <ClInclude Include="SITFilter.hpp" />
+    <ClInclude Include="STFilter.hpp" />
+    <ClInclude Include="SystemInfoManager.hpp" />
+    <ClInclude Include="SystemLogManager.hpp" />
+    <ClInclude Include="SystemResourceMonitorTab.hpp" />
+    <ClInclude Include="TaskKinds.hpp" />
+    <ClInclude Include="TaskListManager.hpp" />
+    <ClInclude Include="TaskReservationCache.hpp" />
+    <ClInclude Include="TaskSystemConnector.hpp" />
+    <ClInclude Include="TDTFilter.hpp" />
+    <ClInclude Include="TimeKeeper.hpp" />
+    <ClInclude Include="TimeShiftProgramListWindow.hpp" />
+    <ClInclude Include="TimeShiftViewerTab.hpp" />
+    <ClInclude Include="TimeShift_Engine.hpp" />
+    <ClInclude Include="TimeShift_Manager.hpp" />
+    <ClInclude Include="TimeShift_SegmentRecorder.hpp" />
+    <ClInclude Include="TimeShift_SegmentStore.hpp" />
+    <ClInclude Include="TimeShift_ViewIndex.hpp" />
+    <ClInclude Include="TOTFilter.hpp" />
+    <ClInclude Include="TSBuffer.h" />
+    <ClInclude Include="TSBufferConstants.hpp" />
+    <ClInclude Include="TSBufferManager.h" />
+    <ClInclude Include="TSBufferStatus.hpp" />
+    <ClInclude Include="TSDTFilter.hpp" />
+    <ClInclude Include="TSMPMCRingBuffer.hpp" />
+    <ClInclude Include="TsPacketCapture.hpp" />
+    <ClInclude Include="TSParser.h" />
+    <ClInclude Include="TSParserTypes.hpp" />
+    <ClInclude Include="TSParserUtils.hpp" />
+    <ClInclude Include="TSSectionValidator.hpp" />
+    <ClInclude Include="TsStreamTypes.hpp" />
+    <ClInclude Include="TSStreamUtils.hpp" />
+    <ClInclude Include="Ts_Filter_Test.hpp" />
+    <ClInclude Include="ts_receiver.hpp" />
+    <ClInclude Include="ts_receiver_test.hpp" />
+    <ClInclude Include="TunerPortManager.hpp" />
+    <ClInclude Include="TunerRegistry.hpp" />
+    <ClInclude Include="TunerSettingsTab.hpp" />
+    <ClInclude Include="TunerTaskGate.hpp" />
+    <ClInclude Include="TVTestIntegration.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="AnalyzePID.cpp" />
+    <ClCompile Include="AppRuntimeWorkState.cpp" />
+    <ClCompile Include="AppSimdAvx2.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">/arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">/arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="AppSimdPolicy.cpp" />
+    <ClCompile Include="AppSimdSse2.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">/arch:SSE2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">/arch:SSE2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/arch:SSE2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/arch:SSE2 %(AdditionalOptions)</AdditionalOptions>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|x64'">StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="AppSimdSse42.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">/arch:SSE4.2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">/arch:SSE4.2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/arch:SSE4.2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/arch:SSE4.2 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="AppWorkerPool.cpp" />
+    <ClCompile Include="AppWritePriorityGate.cpp" />
+    <ClCompile Include="AribDecodecallUnit.cpp" />
+    <ClCompile Include="AribDecoder.cpp" />
+    <ClCompile Include="AribUnicodeTable.cpp" />
+    <ClCompile Include="AutoReserveRuleStore.cpp" />
+    <ClCompile Include="BATFilter.cpp" />
+    <ClCompile Include="BITFilter.cpp" />
+    <ClCompile Include="BonDriverHelper.cpp" />
+    <ClCompile Include="bondriver_load.cpp" />
+    <ClCompile Include="bondriver_scan.cpp" />
+    <ClCompile Include="CATFilter.cpp" />
+    <ClCompile Include="CDTFilter.cpp" />
+    <ClCompile Include="channellist.cpp" />
+    <ClCompile Include="ChannelListLoader.cpp" />
+    <ClCompile Include="ChannelScanTab.cpp" />
+    <ClCompile Include="channel_scan.cpp" />
+    <ClCompile Include="channel_scan_GUI.cpp" />
+    <ClCompile Include="ConfigManager.cpp" />
+    <ClCompile Include="CPUFeature.cpp" />
+    <ClCompile Include="CRC32.cpp" />
+    <ClCompile Include="DebugLogBuffer.cpp" />
+    <ClCompile Include="DebugManager.cpp" />
+    <ClCompile Include="DITFilter.cpp" />
+    <ClCompile Include="EitCoverage.cpp" />
+    <ClCompile Include="EITEventSortUnit.cpp" />
+    <ClCompile Include="EITEventTextAssembler.cpp" />
+    <ClCompile Include="EitEventUpdateUnit.cpp" />
+    <ClCompile Include="EITExtendedItemDebugDump.cpp" />
+    <ClCompile Include="EITFilter.cpp" />
+    <ClCompile Include="EITHtmlProgramTable.cpp" />
+    <ClCompile Include="EITTextDumpLoader.cpp" />
+    <ClCompile Include="EitTextWriter.cpp" />
+    <ClCompile Include="EitWithCoverage.cpp" />
+    <ClCompile Include="EncodingConfig.cpp" />
+    <ClCompile Include="EpgBuilder.cpp" />
+    <ClCompile Include="EpgBuild_GUI.cpp" />
+    <ClCompile Include="EpgHtmlChunkWriter.cpp" />
+    <ClCompile Include="EpgHtmlLite.cpp" />
+    <ClCompile Include="EpgHtmlLite_Common.cpp" />
+    <ClCompile Include="EpgHtmlLite_index.cpp" />
+    <ClCompile Include="EpgHtmlLite_log.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageAutoKeywordReservationList.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageBeforeList.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageBeforeTimetable.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageKeywordSearch.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageNowList.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageNowTimetable.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageProgramMenu.cpp" />
+    <ClCompile Include="EpgHtmlLite_PageReservationList.cpp" />
+    <ClCompile Include="EpgHtmlLite_ReservationSwitch.cpp" />
+    <ClCompile Include="EpgHtmlLite_SplitGuide.cpp" />
+    <ClCompile Include="EpgHtmlPortal.cpp" />
+    <ClCompile Include="EpgHtmlPortal_Assets.cpp" />
+    <ClCompile Include="EpgHtmlPortal_Auto.cpp" />
+    <ClCompile Include="EpgHtmlPortal_Common.cpp" />
+    <ClCompile Include="EpgHtmlPortal_dynamic.cpp" />
+    <ClCompile Include="EpgHtmlPortal_index.cpp" />
+    <ClCompile Include="EpgHtmlPortal_ProgramPageWriter.cpp" />
+    <ClCompile Include="EpgHtmlPortal_ReservationData.cpp" />
+    <ClCompile Include="EpgHtmlPortal_RuntimeData.cpp" />
+    <ClCompile Include="EpgHtmlPortal_SearchData.cpp" />
+    <ClCompile Include="EpgHtmlPortal_SwitchScript.cpp" />
+    <ClCompile Include="EpgHtmlPortal_Template.cpp" />
+    <ClCompile Include="EpgHtmlWriter.cpp" />
+    <ClCompile Include="EpgManualTab.cpp" />
+    <ClCompile Include="EpgPortalReservationApiServer.cpp" />
+    <ClCompile Include="FilterManager.cpp" />
+    <ClCompile Include="GuiDebugLogPipe.cpp" />
+    <ClCompile Include="GuiMain.cpp" />
+    <ClCompile Include="InfoLogManager.cpp" />
+    <ClCompile Include="ITSFilter.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="MainUI.cpp" />
+    <ClCompile Include="MathOps.cpp" />
+    <ClCompile Include="MultiTunerTaskRunner.cpp" />
+    <ClCompile Include="NBITFilter.cpp" />
+    <ClCompile Include="NetworkSettingsTab.cpp" />
+    <ClCompile Include="NITFilter.cpp" />
+    <ClCompile Include="OperationLogManager.cpp" />
+    <ClCompile Include="OSScan.cpp" />
+    <ClCompile Include="PacketCounter.cpp" />
+    <ClCompile Include="PacketDumpManager.cpp" />
+    <ClCompile Include="PacketDumpRingBuffer.cpp" />
+    <ClCompile Include="PayloadSlotBuffer.cpp" />
+    <ClCompile Include="PCScan.cpp" />
+    <ClCompile Include="PhysicalChannelListBuilder.cpp" />
+    <ClCompile Include="PluginTab.cpp" />
+    <ClCompile Include="PMTFilter.cpp" />
+    <ClCompile Include="PrintUtil.cpp" />
+    <ClCompile Include="RecordingEitAnalyzer.cpp" />
+    <ClCompile Include="Reservation_CommitBridge.cpp" />
+    <ClCompile Include="Reservation_EpgRebuildAction.cpp" />
+    <ClCompile Include="ReservationSettingsTab.cpp" />
+    <ClCompile Include="ReservationTvTestWatchTest.cpp" />
+    <ClCompile Include="Reservation_EitMonitor.cpp" />
+    <ClCompile Include="Reservation_ExecutionManager.cpp" />
+    <ClCompile Include="Reservation_ExecutionSettings.cpp" />
+    <ClCompile Include="Reservation_ProgramTimeUtil.cpp" />
+    <ClCompile Include="Reservation_RawTsRecorder.cpp" />
+    <ClCompile Include="Reservation_TargetVerifier.cpp" />
+    <ClCompile Include="Reservation_TvTestController.cpp" />
+    <ClCompile Include="RingBuffer.cpp" />
+    <ClCompile Include="MPMCRingBufferTest.cpp" />
+    <ClCompile Include="RSTFilter.cpp" />
+    <ClCompile Include="SDTFilter.cpp" />
+    <ClCompile Include="SectionSorter.cpp" />
+    <ClCompile Include="SectionTracker.cpp" />
+    <ClCompile Include="SettingsTab.cpp" />
+    <ClCompile Include="SIMDData.cpp" />
+    <ClCompile Include="SIMDselect.cpp" />
+    <ClCompile Include="SITFilter.cpp" />
+    <ClCompile Include="STFilter.cpp" />
+    <ClCompile Include="SystemInfoManager.cpp" />
+    <ClCompile Include="SystemLogManager.cpp" />
+    <ClCompile Include="SystemResourceMonitorTab.cpp" />
+    <ClCompile Include="TaskListManager.cpp" />
+    <ClCompile Include="TaskReservationCache.cpp" />
+    <ClCompile Include="TaskSystemConnector.cpp" />
+    <ClCompile Include="TDTFilter.cpp" />
+    <ClCompile Include="TimeKeeper.cpp" />
+    <ClCompile Include="TimeShiftProgramListWindow.cpp" />
+    <ClCompile Include="TimeShiftViewerTab.cpp" />
+    <ClCompile Include="TimeShift_Engine.cpp" />
+    <ClCompile Include="TimeShift_Manager.cpp" />
+    <ClCompile Include="TimeShift_SegmentRecorder.cpp" />
+    <ClCompile Include="TimeShift_SegmentStore.cpp" />
+    <ClCompile Include="TimeShift_ViewIndex.cpp" />
+    <ClCompile Include="TOTFilter.cpp" />
+    <ClCompile Include="TSBuffer.cpp" />
+    <ClCompile Include="TSBufferManager.cpp" />
+    <ClCompile Include="PATFilter.cpp" />
+    <ClCompile Include="TSDTFilter.cpp" />
+    <ClCompile Include="TsPacketCapture.cpp" />
+    <ClCompile Include="TSParser.cpp" />
+    <ClCompile Include="TSSectionValidator.cpp" />
+    <ClCompile Include="TSStreamUtils.cpp" />
+    <ClCompile Include="Ts_Filter_Test.cpp" />
+    <ClCompile Include="ts_receiver.cpp" />
+    <ClCompile Include="ts_receiver_test.cpp" />
+    <ClCompile Include="TunerPortManager.cpp" />
+    <ClCompile Include="TunerRegistry.cpp" />
+    <ClCompile Include="TunerSettingsTab.cpp" />
+    <ClCompile Include="TVTestIntegration.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
