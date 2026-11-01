@@ -26,6 +26,55 @@
 #include <cstdint>
 #include <exception>
 #include <new>
+#include <atomic>
+#include <chrono>
+#include <cwchar>
+
+// Win32専用EITメモリ診断。x64では既存処理を変更しない。
+#if defined(_M_IX86)
+#include "Memory_policy.hpp"
+#endif
+
+#if defined(_M_IX86) && TSCEPG_MEMORY_POLICY_ACTIVE
+namespace {
+    thread_local const wchar_t* g_eitMemoryStage = L"EIT_UNSPECIFIED";
+    std::atomic_uint64_t g_eitMemoryCommittedSections{ 0 };
+    std::atomic_uint64_t g_eitMemoryLastHeartbeatMs{ 0 };
+
+    // EIT入力がTS受信スレッドの場合を想定。通常監視は仮想領域の全走査をしない。
+    void EitMemoryHeartbeat_() noexcept
+    {
+        using namespace std::chrono;
+        const auto now = static_cast<std::uint64_t>(duration_cast<milliseconds>(
+            steady_clock::now().time_since_epoch()).count());
+        auto last = g_eitMemoryLastHeartbeatMs.load(std::memory_order_relaxed);
+        if (last != 0 && now >= last && (now - last) < 5000ULL) return;
+        if (g_eitMemoryLastHeartbeatMs.compare_exchange_strong(
+            last, now, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+            TSCEPG::MemoryPolicy::Checkpoint(L"EIT_RECEIVING", false);
+        }
+    }
+}
+#define EIT_MEM_STAGE_(name) do { g_eitMemoryStage = (name); } while (false)
+#define EIT_MEM_PULSE_(name) do { EitMemoryHeartbeat_(); } while (false)
+#define EIT_MEM_BAD_ALLOC_() do { TSCEPG::MemoryPolicy::AllocationFailure(g_eitMemoryStage); } while (false)
+#define EIT_MEM_COMMIT_COUNT_(h, l, m) do {                                        \
+    const auto n_ = g_eitMemoryCommittedSections.fetch_add(1, std::memory_order_relaxed) + 1; \
+    if (n_ == 1 || (n_ % 128u) == 0u) {                                           \
+        wchar_t countStage_[112]{};                                             \
+        (void)::swprintf_s(countStage_,                                          \
+            L"EIT_COUNTS_H=%zu_L=%zu_M=%zu",                                  \
+            static_cast<std::size_t>(h), static_cast<std::size_t>(l),             \
+            static_cast<std::size_t>(m));                                       \
+        TSCEPG::MemoryPolicy::Checkpoint(countStage_, false);                    \
+    }                                                                            \
+} while (false)
+#else
+#define EIT_MEM_STAGE_(name) ((void)0)
+#define EIT_MEM_PULSE_(name) ((void)0)
+#define EIT_MEM_BAD_ALLOC_() ((void)0)
+#define EIT_MEM_COMMIT_COUNT_(h, l, m) ((void)0)
+#endif
 
 #ifndef EIT_KEEP_RAW_DESCRIPTORS
 #define EIT_KEEP_RAW_DESCRIPTORS 0
@@ -525,6 +574,7 @@ EITFilter::SectionKey EITFilter::MakeSectionKey(const ParsedEITPacket& p) noexce
 
 ParsedEITPacket EITFilter::MakeSkeletonH(const ParsedEITPacket& in)
 {
+    EIT_MEM_STAGE_(L"EIT_COPY_H_SKELETON");
     ParsedEITPacket h = in;
 
     // H は “骨格のみ”
@@ -577,6 +627,7 @@ bool EITFilter::HasAnyPatchL(const ParsedEITPacket& in) noexcept
 
 ParsedEITPacket EITFilter::MakePatchL(const ParsedEITPacket& in)
 {
+    EIT_MEM_STAGE_(L"EIT_COPY_L_PATCH");
     ParsedEITPacket l = in;
 
     // L は “補完中心” だが、同一キー判定に必要な骨格は残す
@@ -697,6 +748,7 @@ void EITFilter::RebuildMergedAtIndex(std::size_t hIndex)
     if (hIndex >= m_eventsH.size()) return;
 
     // merged は H と同じ index
+    EIT_MEM_STAGE_(L"EIT_REBUILD_MERGED_H_COPY");
     m_eventsMerged[hIndex] = m_eventsH[hIndex];
 
     const auto key = MakeKey(m_eventsH[hIndex]);
@@ -715,6 +767,7 @@ void EITFilter::RebuildMergedAtIndex(std::size_t hIndex)
         return;
     }
 
+    EIT_MEM_STAGE_(L"EIT_REBUILD_MERGED_PATCH");
     ApplyPatchToMerged(m_eventsMerged[hIndex], patch);
     ++m_stats.merged_rebuild;
 }
@@ -1175,6 +1228,9 @@ void EITFilter::InputSection(const uint8_t* section, std::size_t length)
     if ((section[1] & 0x80u) == 0) return; // section_syntax_indicator
     if (!IsEITTableId(table_id)) return;
 
+    EIT_MEM_STAGE_(L"EIT_INPUT_SECTION");
+    EIT_MEM_PULSE_(L"EIT_RECEIVING");
+
     if (section_length < 5 || section_length > 4095) {
         ++m_stats.section_len_range_drop;
         DebugLogFormat(
@@ -1203,6 +1259,7 @@ void EITFilter::InputSection(const uint8_t* section, std::size_t length)
         ParseEITSection(section, logicalLength);
     }
     catch (const std::bad_alloc&) {
+        EIT_MEM_BAD_ALLOC_();
         ++m_errorDropCount;
         DebugLogFormat(L"[EIT][ERROR] ParseEITSection bad_alloc: table_id=0x%02X logical=%zu",
             table_id, logicalLength);
@@ -1316,10 +1373,12 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
 
     std::size_t pos = 14;
     bool sectionParseComplete = true;
+    EIT_MEM_STAGE_(L"EIT_PARSED_EVENTS_RESERVE");
     std::vector<ParsedEITPacket> parsedEvents;
     parsedEvents.reserve(16);
 
     while (pos + 12u <= payload_end) {
+        EIT_MEM_STAGE_(L"EIT_PARSE_EVENT");
         const uint16_t event_id =
             static_cast<uint16_t>((section[pos] << 8) | section[pos + 1]);
 
@@ -1403,6 +1462,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
         std::vector<uint8_t> name_any, text_any;
 
         // ---- 4Eローカル収集: language_code -> collector ----
+        EIT_MEM_STAGE_(L"EIT_EXT_LANGUAGE_COLLECTOR");
         std::unordered_map<uint32_t, ExtFragCollector> ext_by_lang;
         ext_by_lang.reserve(2);
 
@@ -1418,6 +1478,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
 
             std::size_t desc_pos = descriptors_start;
             while (desc_pos + 2u <= descriptors_end) {
+                EIT_MEM_STAGE_(L"EIT_DESCRIPTOR_LOOP");
                 const uint8_t tag = section[desc_pos];
                 const uint8_t dlen = section[desc_pos + 1];
 
@@ -1451,6 +1512,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
 
                 // 0x4D short_event_descriptor
                 if (tag == 0x4D && dlen >= 5) {
+                    EIT_MEM_STAGE_(L"EIT_SHORT_DESCRIPTOR_4D");
                     ++m_stats.desc_4d_seen;
 
                     const std::uint32_t lang =
@@ -1508,6 +1570,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
                 }
                 // 0x4E extended_event_descriptor
                 else if (tag == 0x4E && dlen >= 6) {
+                    EIT_MEM_STAGE_(L"EIT_EXT_DESCRIPTOR_4E");
                     ev_has4e_seen = true;
 
                     HandleExtendedEventDescriptor4E(
@@ -1604,6 +1667,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
 
         // ---- 4E assemble ----
         if (ev_has4e_seen) {
+            EIT_MEM_STAGE_(L"EIT_EXT_TEXT_ASSEMBLY");
             ++m_stats.asm_try;
 
             std::vector<uint8_t> longBytes;
@@ -1663,8 +1727,10 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
             }
         }
 
+        EIT_MEM_STAGE_(L"EIT_EXT_ITEMS_NORMALIZE");
         NormalizeExtendedItems(evt.extended_items);
 
+        EIT_MEM_STAGE_(L"EIT_TID_DIAGNOSTICS");
         UpdateTidDiag(
             this,
             table_id,
@@ -1676,6 +1742,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
             ev_4d_drop_bounds
         );
 
+        EIT_MEM_STAGE_(L"EIT_PARSED_EVENTS_PUSH");
         parsedEvents.push_back(std::move(evt));
 
         pos = descriptors_end;
@@ -1691,6 +1758,7 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
         return;
     }
 
+    EIT_MEM_STAGE_(L"EIT_SECTION_COMMIT");
     if (!CommitSectionSnapshot(sectionKey, version, crc_in_section, parsedEvents)) {
         DebugLogFormat(
             L"[EIT] sectionスナップショット差し替え失敗: "
@@ -1702,6 +1770,8 @@ void EITFilter::ParseEITSection(const uint8_t* section, std::size_t length)
         return;
     }
 
+    EIT_MEM_COMMIT_COUNT_(m_eventsH.size(), m_eventsL.size(), m_eventsMerged.size());
+    EIT_MEM_STAGE_(L"EIT_SECTION_ACCOUNTING");
     SegmentKey segmentKey{ original_network_id, transport_stream_id, service_id, table_id };
     auto& st = m_segmentStates[segmentKey];
     if (!st.version_valid) {
@@ -1768,6 +1838,7 @@ bool EITFilter::StoreCheckedPacket(const ParsedEITPacket& packet)
     bool h_added = false;
 
     try {
+        EIT_MEM_STAGE_(L"EIT_STORE_BEGIN");
         // 1) H（骨格）格納：必ず
         {
             ParsedEITPacket h = MakeSkeletonH(packet);
@@ -1775,10 +1846,12 @@ bool EITFilter::StoreCheckedPacket(const ParsedEITPacket& packet)
             auto itH = m_eventIndexH.find(key);
             if (itH == m_eventIndexH.end()) {
                 h_added = true;
+                EIT_MEM_STAGE_(L"EIT_STORE_H_PUSH");
                 m_eventsH.push_back(std::move(h));
                 m_eventIndexH.emplace(key, m_eventsH.size() - 1);
 
                 // merged も同じ index で増やす
+                EIT_MEM_STAGE_(L"EIT_STORE_MERGED_PUSH");
                 m_eventsMerged.push_back(m_eventsH.back());
                 ++m_stats.h_add;
             }
@@ -1808,12 +1881,14 @@ bool EITFilter::StoreCheckedPacket(const ParsedEITPacket& packet)
 
             auto itL = m_eventIndexL.find(key);
             if (itL == m_eventIndexL.end()) {
+                EIT_MEM_STAGE_(L"EIT_STORE_L_PUSH");
                 m_eventsL.push_back(std::move(l));
                 m_eventIndexL.emplace(key, m_eventsL.size() - 1);
                 ++m_stats.l_add;
             }
             else {
                 auto& dstL = m_eventsL[itL->second];
+                EIT_MEM_STAGE_(L"EIT_STORE_L_MERGE");
                 MergePatchL(dstL, l);
                 ++m_stats.l_update;
             }
@@ -1822,15 +1897,19 @@ bool EITFilter::StoreCheckedPacket(const ParsedEITPacket& packet)
         // 3) merged 再構築（H index を基準に）
         auto itH = m_eventIndexH.find(key);
         if (itH != m_eventIndexH.end()) {
+            EIT_MEM_STAGE_(L"EIT_STORE_REBUILD_MERGED");
             RebuildMergedAtIndex(itH->second);
         }
 
         data_valid = true;
 
+        EIT_MEM_STAGE_(L"EIT_STORE_FLOW_DIAGNOSTIC");
         FlowDiag_OnParsed(this, h_added, m_eventsMerged.size());
         return true;
     }
     catch (const std::bad_alloc&) {
+        EIT_MEM_BAD_ALLOC_();
+        EIT_MEM_STAGE_(L"EIT_BAD_ALLOC_TRIM");
         ++m_errorDropCount;
         DebugLogFormat(L"[EIT][ERROR] ParseAndCheckPacket bad_alloc: event_id=%u H=%zu L=%zu M=%zu",
             packet.event_id,
@@ -1858,6 +1937,7 @@ bool EITFilter::CommitSectionSnapshot(
     uint32_t crc,
     const std::vector<ParsedEITPacket>& parsedEvents)
 {
+    EIT_MEM_STAGE_(L"EIT_COMMIT_START");
     const SectionSignature incomingSignature{ version, crc };
     auto oldIt = m_sectionSnapshots.find(sectionKey);
 
@@ -1912,6 +1992,7 @@ bool EITFilter::CommitSectionSnapshot(
         }
     }
 
+    EIT_MEM_STAGE_(L"EIT_COMMIT_KEY_RESERVE");
     std::vector<EventKey> incomingKeys;
     incomingKeys.reserve(parsedEvents.size());
     std::unordered_set<EventKey, EventKeyHash> incomingKeySet;
@@ -1925,12 +2006,14 @@ bool EITFilter::CommitSectionSnapshot(
     }
 
     // 新イベントを先に格納する。格納失敗時に旧sectionを先に失わない。
+    EIT_MEM_STAGE_(L"EIT_COMMIT_STORE_EVENTS");
     for (const auto& event : parsedEvents) {
         if (!StoreCheckedPacket(event)) {
             return false;
         }
     }
 
+    EIT_MEM_STAGE_(L"EIT_COMMIT_OWNERSHIP");
     std::unordered_set<EventKey, EventKeyHash> oldKeySet;
     std::unordered_set<EventKey, EventKeyHash> removeKeys;
     SectionSnapshot nextSnapshot{};
@@ -1999,6 +2082,7 @@ bool EITFilter::CommitSectionSnapshot(
         ++m_stats.section_snapshot_replace;
     }
 
+    EIT_MEM_STAGE_(L"EIT_COMMIT_SNAPSHOT_INDEX");
     m_sectionSnapshots[sectionKey] = std::move(nextSnapshot);
 
     if (!removeKeys.empty()) {
@@ -2006,6 +2090,7 @@ bool EITFilter::CommitSectionSnapshot(
         RemoveEventsByKeySet(removeKeys);
     }
 
+    EIT_MEM_STAGE_(L"EIT_COMMIT_TRIM");
     TrimStoredEventsIfNeeded();
     data_valid = !m_eventsMerged.empty();
     return true;

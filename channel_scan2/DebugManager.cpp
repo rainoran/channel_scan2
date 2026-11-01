@@ -200,11 +200,18 @@ extern DebugMPMCLogBuffer g_DebugBuffer;
 
 bool DebugManager::IsFileLogEnabled_() const
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return false;
+#endif
     return debugWriteToFile || static_cast<bool>(ConfigManager::GetInstance().GetDebugWriteToFile());
 }
 
 bool DebugManager::EnsureSinkStarted_()
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return false;
+#endif
+
     if (!IsFileLogEnabled_()) {
         return false;
     }
@@ -243,9 +250,13 @@ DebugManager::DebugManager(ConfigManager& cfg)
 
 DebugManager::~DebugManager()
 {
+#if !TSCEPG_DEBUG_LOG_NOOP
     ::OutputDebugStringW(L"[DebugManager::~DebugManager] begin\n");
+#endif
     StopSink_();
+#if !TSCEPG_DEBUG_LOG_NOOP
     ::OutputDebugStringW(L"[DebugManager::~DebugManager] end\n");
+#endif
 }
 
 void DebugManager::ConfigureDebugMode()
@@ -256,7 +267,7 @@ void DebugManager::ConfigureDebugMode()
 
     mpmcLogBuffer.SetIdleWait(std::chrono::milliseconds(10));
 
-    if (!IsFileLogEnabled_()) {
+    if (!IsFileLogEnabled_() || TSCEPG_DEBUG_LOG_NOOP) {
         StopSink_();
     }
 }
@@ -274,6 +285,10 @@ DebugManager& DebugManager::GetInstance()
 
 void DebugManager::PushLog(const std::wstring& message)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     if (!IsFileLogEnabled_()) {
         return;
     }
@@ -291,6 +306,10 @@ void DebugManager::PushLog(const std::wstring& message)
 
 void DebugManager::BufferedDebugLog(const std::wstring& message)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     if (!IsFileLogEnabled_()) {
         return;
     }
@@ -300,6 +319,10 @@ void DebugManager::BufferedDebugLog(const std::wstring& message)
 
 void DebugManager::FlushBufferedLogs(bool /*force*/)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     if (!IsFileLogEnabled_()) {
         return;
     }
@@ -313,6 +336,10 @@ void DebugManager::FlushBufferedLogs(bool /*force*/)
 
 void DebugManager::Flush(bool /*force*/)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     if (!IsFileLogEnabled_()) {
         return;
     }
@@ -355,6 +382,10 @@ static std::wstring SanitizeForConsole(const std::wstring& src)
 
 void DebugLog(const wchar_t* fmt, ...)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     ReentryGuard guard;
     if (!guard.entered) {
         ::OutputDebugStringW(L"[DebugLog] recursive logging suppressed\n");
@@ -412,6 +443,10 @@ void DebugLog(const wchar_t* fmt, ...)
 
 void DebugLogFormat(const wchar_t* format, ...)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     constexpr size_t BUFFER_SIZE = 1024;
     wchar_t buffer[BUFFER_SIZE]{};
 
@@ -425,12 +460,20 @@ void DebugLogFormat(const wchar_t* format, ...)
 
 void DebugLogFormatModern(std::wstring_view formatStr)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     OutputDebugStringW(formatStr.data());
     OutputDebugStringW(L"\n");
 }
 
 void DebugLogToUTF16File(const std::wstring& message)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     std::wofstream ofs(L"debug_utf16.log", std::ios::app);
     if (!ofs) {
         return;
@@ -440,11 +483,19 @@ void DebugLogToUTF16File(const std::wstring& message)
 
 void FlushDebugLog()
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     DebugManager::GetInstance().Flush(true);
 }
 
 void DebugLogUTF32(const std::u32string& u32str, const wchar_t* prefix)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     std::wstringstream ss;
     ss << prefix << L" UTF-32 codepoints: ";
 
@@ -459,6 +510,10 @@ void DebugLogUTF32(const std::u32string& u32str, const wchar_t* prefix)
 
 void DebugLogSafeString(const wchar_t* context, const std::wstring& s)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     DebugLog(L"%ls %ls", context, s.c_str());
 }
 
@@ -480,6 +535,10 @@ void DebugLogbeforedecode(std::wstring_view label,
     std::size_t length,
     std::size_t previewBytes) noexcept
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     if (previewBytes == 0) {
         previewBytes = 16;
     }
@@ -525,6 +584,10 @@ void DebugLogbeforedecode(std::wstring_view label,
 
 void DebugLogFormatSafe(const wchar_t* format, ...)
 {
+#if TSCEPG_DEBUG_LOG_NOOP
+    return;
+#endif
+
     ReentryGuard guard;
     if (!guard.entered) {
         ::OutputDebugStringW(L"[DebugLogFormatSafe] recursive logging suppressed\n");

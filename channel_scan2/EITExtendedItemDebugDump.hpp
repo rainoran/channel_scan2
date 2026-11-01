@@ -8,7 +8,11 @@
 
 // on/off スイッチ（必要ならプロジェクト設定や他ヘッダーから上書き）
 #ifndef EIT_EXTITEM_DUMP_ENABLE
-#define EIT_EXTITEM_DUMP_ENABLE 1
+#if defined(_M_IX86)
+#define EIT_EXTITEM_DUMP_ENABLE 0 // Win32: 既定で詳細ダンプ停止
+#else
+#define EIT_EXTITEM_DUMP_ENABLE 1 // x64: 従来の既定を維持
+#endif
 #endif
 
 namespace eitdebug {

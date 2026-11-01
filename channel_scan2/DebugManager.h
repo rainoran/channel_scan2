@@ -13,6 +13,18 @@
 #include <atomic>
 #include "DebugMPMCLogBuffer.hpp"
 
+// Win32 は DebugLog 系を既定で no-op にする。テスト時は 1 を指定する。
+#ifndef TSCEPG_ENABLE_X86_DEBUG_LOG
+#define TSCEPG_ENABLE_X86_DEBUG_LOG 0
+#endif
+
+#if defined(_WIN32) && !defined(_WIN64) && !(TSCEPG_ENABLE_X86_DEBUG_LOG)
+#define TSCEPG_DEBUG_LOG_NOOP 1
+#else
+#define TSCEPG_DEBUG_LOG_NOOP 0
+#endif
+
+
 #ifndef LIGHT_DEBUG_LOG
 #define LIGHT_DEBUG_LOG(pid, label)                          \
     do {                                                     \

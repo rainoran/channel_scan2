@@ -260,6 +260,7 @@
     <ClInclude Include="ITSFilter.hpp" />
     <ClInclude Include="MainUI.hpp" />
     <ClInclude Include="MathOps.h" />
+    <ClInclude Include="Memory_policy.hpp" />
     <ClInclude Include="MPMCRingBuffer.hpp" />
     <ClInclude Include="MultiTunerTaskRunner.hpp" />
     <ClInclude Include="NBITFilter.hpp" />
@@ -332,6 +333,7 @@
     <ClInclude Include="TSParser.h" />
     <ClInclude Include="TSParserTypes.hpp" />
     <ClInclude Include="TSParserUtils.hpp" />
+    <ClInclude Include="TsRingMemoryPolicy.hpp" />
     <ClInclude Include="TSSectionValidator.hpp" />
     <ClInclude Include="TsStreamTypes.hpp" />
     <ClInclude Include="TSStreamUtils.hpp" />
@@ -449,6 +451,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MainUI.cpp" />
     <ClCompile Include="MathOps.cpp" />
+    <ClCompile Include="Memory_policy.cpp" />
     <ClCompile Include="MultiTunerTaskRunner.cpp" />
     <ClCompile Include="NBITFilter.cpp" />
     <ClCompile Include="NetworkSettingsTab.cpp" />

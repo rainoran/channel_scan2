@@ -44,6 +44,10 @@
 #include <string_view>
 
 #include "DebugManager.h"
+#if defined(_M_IX86)
+#include <cwchar>
+#include "Memory_policy.hpp"
+#endif
 #include "IBonDriver2.h"
 
 #include "FilterManager.hpp"
@@ -57,6 +61,44 @@
 #include "TSSectionValidator.hpp"
 
 
+
+// ============================================================
+// Win32 only: EPG memory diagnostics.
+// x64 builds do not compile any of the additional logging calls.
+// The monitor does not change event storage, TS buffer sizes or output.
+// ============================================================
+#if defined(_M_IX86) && TSCEPG_MEMORY_POLICY_ACTIVE
+#define EPG_X86_MEMORY_CHECKPOINT_(stage, scanVa) \
+    ::TSCEPG::MemoryPolicy::Checkpoint((stage), (scanVa))
+#define EPG_X86_MEMORY_BAD_ALLOC_(stage) \
+    ::TSCEPG::MemoryPolicy::AllocationFailure((stage))
+
+namespace {
+    void EpgX86MemoryCounts_(
+        const wchar_t* stage,
+        std::size_t first,
+        std::size_t second,
+        std::size_t third) noexcept
+    {
+        wchar_t line[128]{};
+        const int n = ::swprintf_s(
+            line,
+            L"%.*ls A=%zu B=%zu C=%zu",
+            54,
+            stage != nullptr ? stage : L"EPG_COUNTS",
+            first, second, third);
+        if (n > 0) {
+            ::TSCEPG::MemoryPolicy::Checkpoint(line, false);
+        }
+    }
+}
+#define EPG_X86_MEMORY_COUNTS_(stage, first, second, third) \
+    EpgX86MemoryCounts_((stage), (first), (second), (third))
+#else
+#define EPG_X86_MEMORY_CHECKPOINT_(stage, scanVa) ((void)0)
+#define EPG_X86_MEMORY_BAD_ALLOC_(stage) ((void)0)
+#define EPG_X86_MEMORY_COUNTS_(stage, first, second, third) ((void)0)
+#endif
 
 // ============================================================
 // EPG archive save fixed test settings
@@ -260,6 +302,8 @@ namespace EpgBuildGUI
         IBonDriver2* bon,
         const std::chrono::steady_clock::time_point& start) noexcept
     {
+        // Phase name is static in callers; no heap allocation in Win32 diagnosis.
+        EPG_X86_MEMORY_CHECKPOINT_(phase, false);
         try {
             DebugLogFormat(
                 L"[EPG][DIAG][PHASE] phase=%ls route=%ls elapsedMs=%lld bon=%p space=%d captureMode=%u outputDir=%ls merged=%ls html=%ls beforeMerged=%ls",
@@ -6433,6 +6477,13 @@ namespace EpgBuildGUI
             return res;
         }
 
+#if defined(_M_IX86) && TSCEPG_MEMORY_POLICY_ACTIVE
+        // Re-initialization is safe: the monitor opens/closes its log for every record.
+        // No worker thread or persistent file handle is created by Memory_policy.
+        (void)::TSCEPG::MemoryPolicy::Initialize();
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_RUN_BEGIN", true);
+#endif
+
         Options o = opt;
         const int space = o.space;
 
@@ -6597,7 +6648,9 @@ namespace EpgBuildGUI
                 MakeEpgCapturePlan_(o, existingEpgPath);
 
             std::filesystem::path outEpgPath;
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_CHANNEL_BEGIN", true);
             const bool ok = ProcessOneChannel(bon, mode, o, ch, chNameSafe, cb, outEpgPath);
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_CHANNEL_END", true);
 
             if (ok && !outEpgPath.empty()) {
                 perChannelEpg.push_back(outEpgPath);
@@ -6685,8 +6738,10 @@ namespace EpgBuildGUI
             std::filesystem::path(o.outputDir) /
             std::filesystem::path(o.beforeMergedEpgFileName);
 
-        
 
+
+        EPG_X86_MEMORY_COUNTS_(L"EPG_MERGE_INPUT_FILES", perChannelEpg.size(), 0, 0);
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_MERGE_CURRENT_BEGIN", true);
         if (!MergeEpgFiles(perChannelEpg, mergedPath)) {
             SafeLog(cb, L"[ERROR][EPG] マージ失敗");
             DebugLogFormat(
@@ -6698,6 +6753,7 @@ namespace EpgBuildGUI
             return res;
         }
 
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_MERGE_CURRENT_END", true);
         EpgDiagLogPhase_(
             L"merge-current-end",
             o,
@@ -6716,7 +6772,10 @@ namespace EpgBuildGUI
                 CollectBeforeArchiveEpgFiles_(o);
 
             if (!beforeInputs.empty()) {
+                EPG_X86_MEMORY_COUNTS_(L"EPG_MERGE_BEFORE_INPUTS", beforeInputs.size(), 0, 0);
+                EPG_X86_MEMORY_CHECKPOINT_(L"EPG_MERGE_BEFORE_BEGIN", true);
                 if (MergeEpgFiles(beforeInputs, beforeMergedPath)) {
+                    EPG_X86_MEMORY_CHECKPOINT_(L"EPG_MERGE_BEFORE_END", true);
                     DebugLogFormat(
                         L"[EPG][BEFORE] before merged epg generated: %ls inputs=%zu",
                         beforeMergedPath.wstring().c_str(),
@@ -7074,6 +7133,7 @@ namespace EpgBuildGUI
         const Callbacks* cb,
         std::filesystem::path& outEpgPath)
     {
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_CAPTURE_CHANNEL_ENTER", true);
         const int space = o.space;
 
         const std::filesystem::path plannedEpgPath =
@@ -7112,6 +7172,7 @@ namespace EpgBuildGUI
 
         if (o.enableUpdateMerge &&
             IsExistingEpgUsable_(plannedEpgPath, o.existingEpgMinBytes)) {
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_SEED_FILE_LOAD_BEGIN", true);
             EpgUpdateBlockLoadStats_ seedLoadStats{};
 
             if (LoadEpgUpdateBlocksAndSeeds_(
@@ -7125,10 +7186,14 @@ namespace EpgBuildGUI
                 // seed投入時は内部preSortを切る。
                 seedOpt.enablePreSort = false;
 
+                EPG_X86_MEMORY_COUNTS_(L"EPG_SEED_EVENTS_BEFORE_APPLY",
+                    existingSeedEvents.size(), existingEpgBlocks.size(), updateStore.Size());
                 const auto seedStats =
                     updateStore.Apply(
                         existingSeedEvents,
                         seedOpt);
+                EPG_X86_MEMORY_COUNTS_(L"EPG_SEED_EVENTS_AFTER_APPLY",
+                    existingSeedEvents.size(), existingEpgBlocks.size(), updateStore.Size());
 
                 updateRewriteAvailable =
                     seedStats.storeSize > 0 &&
@@ -7185,6 +7250,7 @@ namespace EpgBuildGUI
             };
 
         const std::size_t ringCapacity = NormalizeRingCapacity(o.ringBufferSize);
+        EPG_X86_MEMORY_COUNTS_(L"EPG_RING_CAPACITY_PACKETS", ringCapacity, o.ringBufferSize, 0);
         const int pushSleepUs = (std::max)(o.pushRetrySleepUs, 50);
 
         DebugLogFormat(
@@ -7217,7 +7283,9 @@ namespace EpgBuildGUI
             FilterManager filterManager(&parser, nullptr);
             filterManager.ApplyMode(mode);
 
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_RING_ALLOC_BEGIN", true);
             MPMCRingBuffer<TsPacket> ringBuffer(ringCapacity);
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_RING_ALLOC_END", false);
 
             std::atomic<std::size_t> writeOk(0);
             std::atomic<std::size_t> writeFail(0);
@@ -7231,6 +7299,7 @@ namespace EpgBuildGUI
                 };
 
             FilterManagerRunner runner(&filterManager, &ringBuffer);
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_FILTER_RUNNER_START", false);
             runner.Start();
 
             std::thread producer([&]() {
@@ -7320,6 +7389,7 @@ namespace EpgBuildGUI
                     }
                 }
                 catch (const std::bad_alloc&) {
+                    EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_TS_PRODUCER_THREAD");
                     SetProducerError(3);
                     DebugLogFormat(L"[EPG][ERROR] producer bad_alloc: space=%d ch=%d cycle=%d", space, ch, cycle);
                 }
@@ -7391,6 +7461,7 @@ namespace EpgBuildGUI
             }
 
             runner.Stop();
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_CYCLE_RUNNER_STOPPED", true);
 
             const std::size_t cyclePushed = writeOk.load(std::memory_order_relaxed);
             const std::size_t cycleWriteFail = writeFail.load(std::memory_order_relaxed);
@@ -7465,19 +7536,27 @@ namespace EpgBuildGUI
 
             const auto& rawAll = filterManager.GetEITEvents();
             const std::size_t cycleRawCount = rawAll.size();
+            EPG_X86_MEMORY_COUNTS_(L"EPG_CYCLE_RAW_EVENTS",
+                cycleRawCount, updateStore.Size(), updateNewRawEventsForText.size());
 
             if (o.enableUpdateMerge) {
                 if (!rawAll.empty()) {
                     try {
+                        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_UPDATE_RAW_COPY_BEGIN", false);
                         updateNewRawEventsForText.insert(
                             updateNewRawEventsForText.end(),
                             rawAll.begin(),
                             rawAll.end());
 
+                        EPG_X86_MEMORY_COUNTS_(L"EPG_UPDATE_RAW_COPY_END",
+                            updateNewRawEventsForText.size(), rawAll.size(), updateStore.Size());
+                        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_UPDATE_STORE_APPLY_BEGIN", true);
                         const auto ust =
                             updateStore.Apply(
                                 rawAll,
                                 upOpt);
+                        EPG_X86_MEMORY_COUNTS_(L"EPG_UPDATE_STORE_APPLY_END",
+                            rawAll.size(), updateStore.Size(), updateNewRawEventsForText.size());
 
                         DebugLogFormat(
                             L"[EPG][UPD] space=%d ch=%d cycle=%d delta=%zu added=%llu updated=%llu replaced=%llu serviceTimeReplaced=%llu serviceTimeDropped=%llu filled=%llu store=%llu",
@@ -7494,6 +7573,7 @@ namespace EpgBuildGUI
                             static_cast<unsigned long long>(ust.storeSize));
                     }
                     catch (const std::bad_alloc&) {
+                        EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_UPDATE_APPLY_OR_RAW_COPY");
                         DebugLogFormat(L"[EPG][ERROR] updateStore.Apply bad_alloc: space=%d ch=%d cycle=%d raw=%zu",
                             space, ch, cycle, cycleRawCount);
                         return false;
@@ -7524,6 +7604,7 @@ namespace EpgBuildGUI
                         rawEventsAccum.insert(rawEventsAccum.end(), rawAll.begin(), rawAll.end());
                     }
                     catch (const std::bad_alloc&) {
+                        EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_RAW_EVENTS_ACCUM");
                         DebugLogFormat(L"[EPG][ERROR] rawEventsAccum bad_alloc: space=%d ch=%d cycle=%d raw=%zu accum=%zu",
                             space, ch, cycle, rawAll.size(), rawEventsAccum.size());
                         return false;
@@ -7536,6 +7617,9 @@ namespace EpgBuildGUI
                 }
             }
 
+            EPG_X86_MEMORY_COUNTS_(L"EPG_CYCLE_POST_STORE",
+                cycleRawCount, updateStore.Size(), updateNewRawEventsForText.size());
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_CYCLE_SCOPE_EXIT", true);
             SafeCycle(cb, space, ch, cycle,
                 cycleRawCount,
                 o.enableUpdateMerge ? updateStore.Size() : rawEventsAccum.size(),
@@ -7588,6 +7672,7 @@ namespace EpgBuildGUI
             return false;
         }
 
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_EXPORT_SNAPSHOT_BEGIN", true);
         std::vector<ParsedEITPacket> snapshot;
         try {
             snapshot = o.enableUpdateMerge
@@ -7595,6 +7680,7 @@ namespace EpgBuildGUI
                 : std::move(rawEventsAccum);
         }
         catch (const std::bad_alloc&) {
+            EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_EXPORT_SNAPSHOT");
             DebugLogFormat(L"[EPG][ERROR] ExportSnapshotSorted bad_alloc: space=%d ch=%d", space, ch);
             return false;
         }
@@ -7603,16 +7689,20 @@ namespace EpgBuildGUI
             return false;
         }
 
+        EPG_X86_MEMORY_COUNTS_(L"EPG_EXPORT_SNAPSHOT_END",
+            snapshot.size(), updateStore.Size(), updateNewRawEventsForText.size());
         if (snapshot.empty()) {
             DebugLogFormat(L"[WARN][EPG] no events: space=%d ch=%d", space, ch);
             return false;
         }
 
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_SORT_FINAL_BEGIN", true);
         std::vector<ParsedEITPacket> events;
         try {
             events = EITEventSortUnit::BuildUniqueSortedEvents(snapshot);
         }
         catch (const std::bad_alloc&) {
+            EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_SORT_FINAL");
             DebugLogFormat(L"[EPG][ERROR] BuildUniqueSortedEvents bad_alloc: space=%d ch=%d snapshot=%zu",
                 space, ch, snapshot.size());
             return false;
@@ -7623,9 +7713,12 @@ namespace EpgBuildGUI
             return false;
         }
 
+        EPG_X86_MEMORY_COUNTS_(L"EPG_SORT_FINAL_END",
+            snapshot.size(), events.size(), updateNewRawEventsForText.size());
         // ここで元 snapshot はもう不要なので即解放
         snapshot.clear();
         snapshot.shrink_to_fit();
+        EPG_X86_MEMORY_CHECKPOINT_(L"EPG_SNAPSHOT_RELEASED", true);
 
         if (events.empty()) {
             DebugLogFormat(L"[WARN][EPG] unique=0: space=%d ch=%d", space, ch);
@@ -7658,7 +7751,7 @@ namespace EpgBuildGUI
         outEpgPath = epgPath;
         }
 */
-        
+
         const std::filesystem::path epgPath = plannedEpgPath;
         const std::filesystem::path tempEpgPath =
             std::filesystem::path(epgPath.wstring() + L".tmp");
@@ -7676,11 +7769,15 @@ namespace EpgBuildGUI
             std::vector<ParsedEITPacket> newUniqueEvents;
 
             try {
+                EPG_X86_MEMORY_CHECKPOINT_(L"EPG_NEW_TEXT_SORT_BEGIN", true);
                 newUniqueEvents =
                     EITEventSortUnit::BuildUniqueSortedEvents(
                         updateNewRawEventsForText);
+                EPG_X86_MEMORY_COUNTS_(L"EPG_NEW_TEXT_SORT_END",
+                    newUniqueEvents.size(), updateNewRawEventsForText.size(), events.size());
             }
             catch (const std::bad_alloc&) {
+                EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_NEW_TEXT_SORT");
                 DebugLogFormat(
                     L"[EPG][ERROR] update new BuildUniqueSortedEvents bad_alloc: space=%d ch=%d raw=%zu",
                     space,
@@ -7717,6 +7814,7 @@ namespace EpgBuildGUI
                         o.enableAribTrace);
             }
             catch (const std::bad_alloc&) {
+                EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_NEW_TEXT_WRITE");
                 DebugLogFormat(
                     L"[EPG][ERROR] WriteEitDumpTextFileFromParsed new bad_alloc: %ls",
                     newOnlyTempPath.wstring().c_str());
@@ -7760,6 +7858,7 @@ namespace EpgBuildGUI
             std::size_t updatedWritten = 0;
             std::size_t updatedMissing = 0;
 
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_UPDATE_TEXT_BUILD_BEGIN", true);
             if (!BuildUpdatedEpgTextFromSnapshot_(
                 events,
                 existingEpgBlocks,
@@ -7782,10 +7881,14 @@ namespace EpgBuildGUI
                 return false;
             }
 
+            EPG_X86_MEMORY_COUNTS_(L"EPG_UPDATE_TEXT_BUILD_END",
+                updatedText.size(), existingEpgBlocks.size(), newEpgBlocks.size());
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_UPDATE_TEXT_WRITE_BEGIN", true);
             writeOk =
                 WriteWideUtf8File_(
                     tempEpgPath,
                     updatedText);
+            EPG_X86_MEMORY_CHECKPOINT_(L"EPG_UPDATE_TEXT_WRITE_END", true);
 
             {
                 std::error_code ec;
@@ -7836,6 +7939,7 @@ namespace EpgBuildGUI
                         o.enableAribTrace);
             }
             catch (const std::bad_alloc&) {
+                EPG_X86_MEMORY_BAD_ALLOC_(L"EPG_EIT_DUMP_WRITE");
                 DebugLogFormat(
                     L"[EPG][ERROR] WriteEitDumpTextFileFromParsed bad_alloc: %ls",
                     tempEpgPath.wstring().c_str());
@@ -7882,7 +7986,7 @@ namespace EpgBuildGUI
         }
 
         outEpgPath = epgPath;
-        
+
         // Lite版の ProgramEntry はここでは作らない。
         // ここで直接 ParsedEITPacket から作ると、重いJS版とデータ経路が分岐して
         // Lite版だけ空になる原因になるため、Run() 側で MergeEpgFiles() 完了後に
