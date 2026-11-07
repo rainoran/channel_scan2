@@ -16,6 +16,8 @@ https://github.com/rainoran/TunerBridgePlugin
 テストチューナー
 Digital Devices MAX M4v1
 
+1.03
+スリープ対応
 1.02
 32bitでも使えるように改良
 1.01
