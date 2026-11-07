@@ -71,6 +71,18 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>TSCEPG</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <TargetName>TSCEPG</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>TSCEPG</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>TSCEPG</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -305,6 +317,7 @@
     <ClInclude Include="SIMDData.hpp" />
     <ClInclude Include="SIMDselect.h" />
     <ClInclude Include="SITFilter.hpp" />
+    <ClInclude Include="SleepWakeManager.hpp" />
     <ClInclude Include="STFilter.hpp" />
     <ClInclude Include="SystemInfoManager.hpp" />
     <ClInclude Include="SystemLogManager.hpp" />
@@ -489,6 +502,7 @@
     <ClCompile Include="SIMDData.cpp" />
     <ClCompile Include="SIMDselect.cpp" />
     <ClCompile Include="SITFilter.cpp" />
+    <ClCompile Include="SleepWakeManager.cpp" />
     <ClCompile Include="STFilter.cpp" />
     <ClCompile Include="SystemInfoManager.cpp" />
     <ClCompile Include="SystemLogManager.cpp" />

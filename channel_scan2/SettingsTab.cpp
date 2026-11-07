@@ -53,6 +53,12 @@ static constexpr int IDC_BT_RESERVATION_RECORDDIR = 1032;
 static constexpr int IDC_CHK_RESERVATION_TVTEST_RECORD_SHOW_VIDEO = 1033;
 
 static constexpr int IDC_TAB_SETTINGS_PAGE = 1040;
+static constexpr int IDC_CHK_SLEEP_ENABLED = 1060;
+static constexpr int IDC_CB_SLEEP_LEAD = 1061;
+static constexpr int IDC_CB_SLEEP_AFTER_WAKE = 1062;
+static constexpr int IDC_BT_SLEEP_SAVE = 1063;
+static constexpr int IDC_BT_SLEEP_RELOAD = 1064;
+static constexpr int IDC_BT_SLEEP_SYNC = 1065;
 
 static constexpr int IDC_ED_TIMESHIFT_ROOT = 1050;
 static constexpr int IDC_BT_TIMESHIFT_ROOT = 1051;
@@ -394,13 +400,13 @@ bool SettingsTab::Create(HWND hParent, const RECT& rc, HINSTANCE inst, HFONT fon
     return (hWnd != nullptr);
 }
 
-void SettingsTab::Show(bool show)
+void SettingsTab::Show(bool show) const
 {
     if (!hWnd) return;
     ShowWindow(hWnd, show ? SW_SHOW : SW_HIDE);
 }
 
-void SettingsTab::Move(const RECT& rc)
+void SettingsTab::Move(const RECT& rc) const
 {
     if (!hWnd) return;
     MoveWindow(hWnd, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, TRUE);
@@ -521,7 +527,7 @@ LRESULT SettingsTab::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
         if (id == IDC_BT_TIMESHIFT_ROOT) {
             BrowseTimeShiftRootFolder();
             return 0;
-		}
+        }
         if (id == IDC_BT_SCAN) {
             ScanBonDriverInFolder();
             return 0;
@@ -530,15 +536,24 @@ LRESULT SettingsTab::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
             OnBonListSelChanged();
             return 0;
         }
-        if (id == IDC_BT_RELOAD) {
+        if (id == IDC_CHK_SLEEP_ENABLED && code == BN_CLICKED) {
+            UpdateSleepControls_();
+            return 0;
+        }
+        if (id == IDC_BT_SLEEP_SYNC) {
+            if (sleepRuntimeCallback_) sleepRuntimeCallback_(true);
+            return 0;
+        }
+        if (id == IDC_BT_RELOAD || id == IDC_BT_SLEEP_RELOAD) {
             ReloadFromConfig();
+            if (sleepRuntimeCallback_) sleepRuntimeCallback_(false);
             if (log) log(L"[設定] config.ini を再読み込みしました。");
             return 0;
         }
-        if (id == IDC_BT_SAVE) {
+        if (id == IDC_BT_SAVE || id == IDC_BT_SLEEP_SAVE) {
             ApplyToConfig();
             ConfigManager::GetInstance().SaveConfig();
-
+            if (sleepRuntimeCallback_) sleepRuntimeCallback_(false);
             if (log) log(L"[設定] 保存しました。");
             return 0;
         }
@@ -576,6 +591,9 @@ void SettingsTab::RegisterPageControl_(PageIndex page, HWND child)
     case PageIndex::Advanced:
         pageAdvanced_.push_back(child);
         break;
+    case PageIndex::Sleep:
+        pageSleep_.push_back(child);
+        break;
 
     default:
         break;
@@ -600,6 +618,10 @@ void SettingsTab::ShowSettingsPage_(PageIndex page)
     showList(pageReservation_, page == PageIndex::Reservation);
     showList(pageTimeShift_, page == PageIndex::TimeShift);
     showList(pageAdvanced_, page == PageIndex::Advanced);
+    showList(pageSleep_, page == PageIndex::Sleep);
+    if (page == PageIndex::Sleep) {
+        UpdateSleepControls_();
+    }
 }
 
 RECT SettingsTab::GetSettingsPageRect_() const
@@ -780,6 +802,9 @@ void SettingsTab::OnCreate()
 
         item.pszText = const_cast<LPWSTR>(L"詳細");
         TabCtrl_InsertItem(hSettingsTab, 4, &item);
+
+        item.pszText = const_cast<LPWSTR>(L"スリープ");
+        TabCtrl_InsertItem(hSettingsTab, 5, &item);
 
         TabCtrl_SetCurSel(hSettingsTab, static_cast<int>(currentPage_));
     }
@@ -1180,6 +1205,60 @@ void SettingsTab::OnCreate()
         28,
         IDC_BT_SAVE);
 
+    // ---- Sleep page ----
+    chkSleepEnabled = CreatePageButton_(
+        PageIndex::Sleep, L"予約に連動したスリープ・復帰設定を有効にする",
+        BS_AUTOCHECKBOX, 10, 12, 470, 24, IDC_CHK_SLEEP_ENABLED);
+
+    lblSleepLead = CreatePageStatic_(
+        PageIndex::Sleep, L"予約前の復帰時間：", 10, 54, 165, 20);
+    cbSleepLead = CreatePageCombo_(
+        PageIndex::Sleep, WS_EX_CLIENTEDGE, CBS_DROPDOWNLIST,
+        185, 50, 180, 220, IDC_CB_SLEEP_LEAD);
+
+    lblSleepAfterWake = CreatePageStatic_(
+        PageIndex::Sleep, L"予約実行後の動作：", 10, 94, 165, 20);
+    cbSleepAfterWake = CreatePageCombo_(
+        PageIndex::Sleep, WS_EX_CLIENTEDGE, CBS_DROPDOWNLIST,
+        185, 90, 300, 180, IDC_CB_SLEEP_AFTER_WAKE);
+
+    lblSleepNote = CreatePageStatic_(
+        PageIndex::Sleep,
+        L"※ 復帰タイマーはアプリ起動中のみ維持します。Windows側の復帰タイマー許可が必要です。",
+        10, 142, 720, 42);
+
+    lblSleepNextWake = CreatePageStatic_(
+        PageIndex::Sleep, L"次回復帰： 未計算", 10, 190, 720, 24);
+    lblSleepTimerState = CreatePageStatic_(
+        PageIndex::Sleep, L"Windowsタイマー： 未確認", 10, 216, 720, 24);
+    lblSleepGuardState = CreatePageStatic_(
+        PageIndex::Sleep, L"稼働保護： 未確認", 10, 242, 720, 24);
+
+    btSleepReload = CreatePageButton_(
+        PageIndex::Sleep, L"再読み込み", 0, 10, 280, 120, 28, IDC_BT_SLEEP_RELOAD);
+    btSleepSave = CreatePageButton_(
+        PageIndex::Sleep, L"保存", 0, 140, 280, 120, 28, IDC_BT_SLEEP_SAVE);
+    btSleepSync = CreatePageButton_(
+        PageIndex::Sleep, L"タイマー再同期", 0, 270, 280, 145, 28, IDC_BT_SLEEP_SYNC);
+
+    for (const int minutes : { 1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 90, 120 }) {
+        const std::wstring label = std::to_wstring(minutes) + L" 分前";
+        const LRESULT index = SendMessageW(
+            cbSleepLead, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+        if (index != CB_ERR && index != CB_ERRSPACE) {
+            SendMessageW(cbSleepLead, CB_SETITEMDATA, static_cast<WPARAM>(index),
+                static_cast<LPARAM>(minutes));
+        }
+    }
+    for (const wchar_t* label : {
+        L"Windows の電源設定に任せる",
+        L"すべての予約処理終了後に再スリープ",
+        L"復帰後は起動状態を維持する"
+        }) {
+        SendMessageW(cbSleepAfterWake, CB_ADDSTRING, 0,
+            reinterpret_cast<LPARAM>(label));
+    }
+
     // ---- Combo items ----
     {
         // AUTO:
@@ -1385,6 +1464,24 @@ void SettingsTab::LoadFromConfigToUI()
         }
     }
 
+    SendMessageW(chkSleepEnabled, BM_SETCHECK,
+        cfg.GetSleepEnabled() ? BST_CHECKED : BST_UNCHECKED, 0);
+    {
+        const int value = cfg.GetSleepWakeLeadMinutes();
+        const int count = static_cast<int>(SendMessageW(cbSleepLead, CB_GETCOUNT, 0, 0));
+        int best = 0;
+        int bestDiff = INT_MAX;
+        for (int i = 0; i < count; ++i) {
+            const int minutes = static_cast<int>(SendMessageW(cbSleepLead, CB_GETITEMDATA, i, 0));
+            const int diff = (minutes > value) ? (minutes - value) : (value - minutes);
+            if (diff < bestDiff) { best = i; bestDiff = diff; }
+        }
+        SendMessageW(cbSleepLead, CB_SETCURSEL, best, 0);
+        SendMessageW(cbSleepAfterWake, CB_SETCURSEL,
+            static_cast<WPARAM>(cfg.GetSleepAfterWakeAction()), 0);
+        UpdateSleepControls_();
+    }
+
     const std::wstring cpu = cfg.GetSelectedCPUFeature();
     const int cpuCount =
         static_cast<int>(SendMessageW(cbCpu, CB_GETCOUNT, 0, 0));
@@ -1571,7 +1668,7 @@ void SettingsTab::SaveFromUIToConfig()
         }
     }
 
-    
+
     {
         std::wstring root = GetPathFromEdit(edTimeShiftRootFolder);
         if (root.empty()) {
@@ -1608,7 +1705,22 @@ void SettingsTab::SaveFromUIToConfig()
         }
     }
 
-	const int cpuSel = static_cast<int>(SendMessageW(cbCpu, CB_GETCURSEL, 0, 0));
+    cfg.SetSleepEnabled(
+        SendMessageW(chkSleepEnabled, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    {
+        const int sel = static_cast<int>(SendMessageW(cbSleepLead, CB_GETCURSEL, 0, 0));
+        if (sel >= 0) {
+            const int minutes = static_cast<int>(SendMessageW(
+                cbSleepLead, CB_GETITEMDATA, static_cast<WPARAM>(sel), 0));
+            if (minutes > 0) cfg.SetSleepWakeLeadMinutes(minutes);
+        }
+        const int after = static_cast<int>(SendMessageW(cbSleepAfterWake, CB_GETCURSEL, 0, 0));
+        if (after >= 0 && after <= 2) {
+            cfg.SetSleepAfterWakeAction(static_cast<ConfigManager::SleepAfterWakeAction>(after));
+        }
+    }
+
+    const int cpuSel = static_cast<int>(SendMessageW(cbCpu, CB_GETCURSEL, 0, 0));
     if (cpuSel >= 0) {
         wchar_t buf[64]{};
         SendMessageW(cbCpu, CB_GETLBTEXT, cpuSel, reinterpret_cast<LPARAM>(buf));
@@ -1872,6 +1984,42 @@ void SettingsTab::OnBonListSelChanged()
     }
 }
 
+void SettingsTab::SetSleepRuntimeStatus(
+    std::wstring_view nextWake, std::wstring_view timerState,
+    std::wstring_view guardState) const
+{
+    // 10秒周期更新でSTATICを毎回再描画しない。
+    const auto updateIfChanged = [](HWND control, std::wstring_view label,
+        std::wstring_view value)
+        {
+            if (!control) return;
+            std::wstring line(label);
+            line.append(value);
+            const int len = GetWindowTextLengthW(control);
+            if (len == static_cast<int>(line.size())) {
+                std::wstring current(static_cast<std::size_t>(len) + 1, L'\0');
+                const int got = GetWindowTextW(control, current.data(), len + 1);
+                if (got == len && line.compare(0, line.size(), current.data(),
+                    static_cast<std::size_t>(got)) == 0) {
+                    return;
+                }
+            }
+            SetWindowTextW(control, line.c_str());
+        };
+    updateIfChanged(lblSleepNextWake, L"次回復帰： ", nextWake);
+    updateIfChanged(lblSleepTimerState, L"Windowsタイマー： ", timerState);
+    updateIfChanged(lblSleepGuardState, L"稼働保護： ", guardState);
+}
+
+void SettingsTab::UpdateSleepControls_() const
+{
+    if (!chkSleepEnabled) return;
+    const bool enabled =
+        SendMessageW(chkSleepEnabled, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    if (cbSleepLead) EnableWindow(cbSleepLead, enabled ? TRUE : FALSE);
+    if (cbSleepAfterWake) EnableWindow(cbSleepAfterWake, enabled ? TRUE : FALSE);
+}
+
 void SettingsTab::OnSize(int w, int h)
 {
     if (!hWnd) return;
@@ -2092,6 +2240,32 @@ void SettingsTab::OnSize(int w, int h)
     }
 
     // ------------------------------------------------------------
+    // Sleep page
+    // ------------------------------------------------------------
+    {
+        int y = y0 + 8;
+        if (chkSleepEnabled) MoveWindow(chkSleepEnabled, x0, y, wideTextW, checkH, TRUE);
+        y += 42;
+        moveLabel(lblSleepLead, x0, y, labelW);
+        if (cbSleepLead) MoveWindow(cbSleepLead, leftEdit, y, 190, 240, TRUE);
+        y += 44;
+        moveLabel(lblSleepAfterWake, x0, y, labelW);
+        if (cbSleepAfterWake) MoveWindow(cbSleepAfterWake, leftEdit, y, 320, 200, TRUE);
+        y += 48;
+        if (lblSleepNote) MoveWindow(lblSleepNote, x0, y, wideTextW, 42, TRUE);
+        y += 50;
+        if (lblSleepNextWake) MoveWindow(lblSleepNextWake, x0, y, wideTextW, 24, TRUE);
+        y += 26;
+        if (lblSleepTimerState) MoveWindow(lblSleepTimerState, x0, y, wideTextW, 24, TRUE);
+        y += 26;
+        if (lblSleepGuardState) MoveWindow(lblSleepGuardState, x0, y, wideTextW, 24, TRUE);
+        y += 38;
+        if (btSleepReload) MoveWindow(btSleepReload, x0, y, 120, 28, TRUE);
+        if (btSleepSave) MoveWindow(btSleepSave, x0 + 132, y, 120, 28, TRUE);
+        if (btSleepSync) MoveWindow(btSleepSync, x0 + 264, y, 145, 28, TRUE);
+    }
+
+    // ------------------------------------------------------------
     // Advanced page
     // ------------------------------------------------------------
     {
@@ -2143,6 +2317,11 @@ void SettingsTab::OnSize(int w, int h)
 
     case PageIndex::Advanced:
         bringFront(pageAdvanced_);
+        break;
+
+    case PageIndex::Sleep:
+        bringFront(pageSleep_);
+        UpdateSleepControls_();
         break;
 
     default:

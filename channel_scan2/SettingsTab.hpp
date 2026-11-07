@@ -8,6 +8,8 @@
 
 #include <Windows.h>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <functional>
 #include <vector>
 
@@ -20,11 +22,19 @@ public:
         std::function<GuiActions& ()>&& getActions,
         std::function<void(std::wstring_view)>&& log);
 
-    void Show(bool show);
-    void Move(const RECT& rc);
+    void Show(bool show) const;
+    void Move(const RECT& rc) const;
 
     void ApplyToConfig();
     void ReloadFromConfig();
+
+    // MainUIが登録する通知。UI保存/明示再同期でのみ呼ぶ。
+    // forceReload=trueの場合はtasks.iniの内容を強制再同期する。
+    void SetSleepRuntimeCallback(std::function<void(bool)> cb) {
+        sleepRuntimeCallback_ = std::move(cb);
+    }
+    void SetSleepRuntimeStatus(std::wstring_view nextWake,
+        std::wstring_view timerState, std::wstring_view guardState) const;
 
 private:
     enum class PageIndex : int
@@ -34,7 +44,8 @@ private:
         Reservation = 2,
         TimeShift = 3,
         Advanced = 4,
-        Count = 5
+        Sleep = 5,
+        Count = 6
     };
 
 private:
@@ -46,6 +57,7 @@ private:
 
     void LoadFromConfigToUI();
     void SaveFromUIToConfig();
+    void UpdateSleepControls_() const;
 
     void BrowseTerrestrialBonDriverFile();
     void BrowseSatelliteBonDriverFile();
@@ -55,7 +67,7 @@ private:
     void ApplySelectedBonDriverToTerrestrial_();
     void ApplySelectedBonDriverToSatellite_();
 
-    
+
     void BrowseScanFolder();
     void BrowseReservationRecordFolder();
     void BrowseTimeShiftRootFolder();
@@ -115,6 +127,7 @@ private:
 
     std::function<GuiActions& ()> getActions;
     std::function<void(std::wstring_view)> log;
+    std::function<void(bool)> sleepRuntimeCallback_;
 
     HWND hSettingsTab = nullptr;
     PageIndex currentPage_ = PageIndex::BonDriver;
@@ -124,6 +137,7 @@ private:
     std::vector<HWND> pageReservation_;
     std::vector<HWND> pageTimeShift_;
     std::vector<HWND> pageAdvanced_;
+    std::vector<HWND> pageSleep_;
 
     HWND lblBonTerrestrial = nullptr;
     HWND lblBonSatellite = nullptr;
@@ -131,10 +145,10 @@ private:
     HWND lblBonList = nullptr;
     HWND lblTunerCount = nullptr;
     HWND lblReservationRecordDir = nullptr;
-    
-    
-    
-    
+
+
+
+
 
     HWND lblTimeShiftRootFolder = nullptr;
     HWND lblTimeShiftMaxBytesGB = nullptr;
@@ -177,6 +191,19 @@ private:
     HWND cbEnc = nullptr;
     HWND btReload = nullptr;
     HWND btSave = nullptr;
+
+    HWND chkSleepEnabled = nullptr;
+    HWND lblSleepLead = nullptr;
+    HWND cbSleepLead = nullptr;
+    HWND lblSleepAfterWake = nullptr;
+    HWND cbSleepAfterWake = nullptr;
+    HWND lblSleepNote = nullptr;
+    HWND btSleepSave = nullptr;
+    HWND btSleepReload = nullptr;
+    HWND btSleepSync = nullptr;
+    HWND lblSleepNextWake = nullptr;
+    HWND lblSleepTimerState = nullptr;
+    HWND lblSleepGuardState = nullptr;
 
     std::vector<std::wstring> scannedBonPaths;
 };

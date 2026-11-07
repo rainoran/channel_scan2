@@ -2755,7 +2755,8 @@ namespace
             const std::wstring assistUrl =
                 EpgHtmlLite::Common::BuildAutoReserveEntryUrl(
                     e.title,
-                    autoReserveEntryUrl,
+                    (L"/epg_lite_keyword_search_space" +
+                        std::to_wstring(space) + L".html"),
                     space);
 
             oss << L"<a class=\"lite-auto-reserve-assist\" href=\""

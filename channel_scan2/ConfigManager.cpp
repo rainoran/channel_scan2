@@ -708,6 +708,11 @@ void ConfigManager::LoadConfig()
     uiWindowH = ReadIniInt(L"UI", L"WindowH", 720);
     uiLastTabIndex = ReadIniInt(L"UI", L"LastTabIndex", 0);
 
+    sleepEnabled = ParseBool(ReadIniValue(L"Sleep", L"Enabled", L"0"));
+    SetSleepWakeLeadMinutes(ReadIniInt(L"Sleep", L"WakeLeadMinutes", 5));
+    SetSleepAfterWakeAction(static_cast<SleepAfterWakeAction>(
+        ReadIniInt(L"Sleep", L"AfterWakeAction", 0)));
+
     tunersCount = ReadIniInt(L"Tuners", L"Count", 1);
     if (tunersCount < 1) tunersCount = 1;
 
@@ -2306,6 +2311,10 @@ void ConfigManager::InitializeConfig()
     EnsureDefault(L"UI", L"WindowH", L"720");
     EnsureDefault(L"UI", L"LastTabIndex", L"0");
 
+    EnsureDefault(L"Sleep", L"Enabled", L"0");
+    EnsureDefault(L"Sleep", L"WakeLeadMinutes", L"5");
+    EnsureDefault(L"Sleep", L"AfterWakeAction", L"0");
+
     EnsureDefault(L"Tuners", L"Count", L"1");
     EnsureDefault(L"Tuners", L"ActiveIndex", L"0");
 
@@ -2696,6 +2705,15 @@ void ConfigManager::SaveConfig()
             iniPath,
             L"UI",
             sec);
+    }
+
+    // Sleep 設定は ConfigManager の一括保存で管理する。
+    {
+        std::vector<IniKeyValue_> sec;
+        AddIniKey_(sec, L"Enabled", IniBoolText_(sleepEnabled));
+        AddIniKey_(sec, L"WakeLeadMinutes", IniIntText_(sleepWakeLeadMinutes));
+        AddIniKey_(sec, L"AfterWakeAction", IniIntText_(static_cast<int>(sleepAfterWakeAction)));
+        WriteIniSectionFast_(iniMutex, iniPath, L"Sleep", sec);
     }
 
     // Tuners 設定

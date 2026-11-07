@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <vector>
 #include <utility>
+#include <tuple>
+#include <system_error>
 #include <CommCtrl.h>
 #pragma comment(lib, "Comctl32.lib")
 
@@ -53,6 +55,8 @@
 #include "TimeShiftViewerTab.hpp"
 #include "SystemResourceMonitorTab.hpp"
 #include "DebugManager.h"
+#include "SystemInfoManager.hpp"
+#include "RuntimeFlags.hpp"
 
 
 #include "Ts_Filter_Test.hpp"
@@ -271,6 +275,8 @@ namespace {
     };
 
     static constexpr UINT_PTR TIMER_ID_TIMEKEEPER = 501;
+    static constexpr UINT_PTR TIMER_ID_CONFIG_REAPPLY = 502;
+    static constexpr UINT_PTR TIMER_ID_SLEEP_WAKE = 503;
 
     static constexpr UINT WM_APP_TRAY = WM_APP + 310;
     static constexpr UINT TRAY_ICON_ID = 1;
@@ -318,11 +324,15 @@ namespace {
         g_hiddenToTray = false;
     }
 
-    static void TrayShowMenu(HWND hWnd, POINT pt) {
+    static void TrayShowMenu(HWND hWnd, POINT pt, PluginTab* pluginTab) {
         HMENU hMenu = CreatePopupMenu();
         if (!hMenu) return;
 
         InsertMenuW(hMenu, -1, MF_BYPOSITION | MF_STRING, IDC_TRAY_RESTORE, L"復帰");
+        // 実行中DLLの操作メニューだけを追加。DLLのON/OFFはPluginTabのチェックボックス専用。
+        if (pluginTab != nullptr) {
+            pluginTab->AppendTrayPluginMenu(hMenu);
+        }
         InsertMenuW(hMenu, -1, MF_BYPOSITION | MF_STRING, IDC_TRAY_EXIT, L"終了");
 
         SetForegroundWindow(hWnd);
@@ -347,6 +357,8 @@ static constexpr UINT WM_APP_SCHEDULED_EPG_FULL = WM_APP + 225;
 static constexpr UINT WM_APP_SCHEDULED_EPG_LIGHT = WM_APP + 226;
 
 static constexpr UINT WM_APP_RESERVATION_DATA_CHANGED = WM_APP + 240;
+static constexpr UINT WM_APP_SLEEP_SETTINGS_CHANGED = WM_APP + 241;
+static constexpr UINT WM_APP_SLEEP_ACTIVITY_CHANGED = WM_APP + 242;
 
 struct ScanRowMsg {
     int space = 0;
@@ -425,6 +437,94 @@ static std::wstring GetDefaultTasksIniPath()
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     std::filesystem::path p(exePath);
     return (p.parent_path() / L"tasks.ini").wstring();
+}
+
+// 保存前後で比較する最小限のチューナー設定。
+// 既存の受信処理には触れず、停止・再起動が必要かを判断する。
+struct MainUiTunerConfigSnapshot_
+{
+    bool enabled = false;
+    int role = 0;
+    std::wstring bonDriverPath;
+    std::wstring internalBonDriverPath;
+    int timeShiftSpace = 0;
+    int timeShiftChannel = -1;
+    std::uint16_t serviceId = 0;
+    std::uint16_t networkId = 0;
+    std::uint16_t tsId = 0;
+    std::wstring timeShiftName;
+
+    bool operator==(const MainUiTunerConfigSnapshot_&) const = default;
+};
+
+static std::vector<MainUiTunerConfigSnapshot_> MainUiCaptureTunerConfig_(
+    const ConfigManager& cfg)
+{
+    std::vector<MainUiTunerConfigSnapshot_> result;
+
+    // 誤設定で極端な Count が入った場合の過大確保を防ぐ。
+    constexpr int kSnapshotMaxTuners = 256;
+    const int count = (std::clamp)(
+        cfg.GetTunersCount(), 1, kSnapshotMaxTuners);
+    result.reserve(static_cast<std::size_t>(count));
+
+    for (int i = 0; i < count; ++i) {
+        MainUiTunerConfigSnapshot_ item{};
+        item.enabled = cfg.GetTunerEnabled(i);
+        item.role = static_cast<int>(cfg.GetTunerUseRole(i));
+        item.bonDriverPath = cfg.GetBonDriverPathForTunerOrDefault(i);
+        item.internalBonDriverPath = cfg.GetTunerInternalBonDriverPath(i);
+        item.timeShiftSpace = cfg.GetTunerTimeShiftLockSpace(i);
+        item.timeShiftChannel = cfg.GetTunerTimeShiftLockChannel(i);
+        item.serviceId = cfg.GetTunerTimeShiftLockServiceId(i);
+        item.networkId = cfg.GetTunerTimeShiftLockNetworkId(i);
+        item.tsId = cfg.GetTunerTimeShiftLockTsId(i);
+        item.timeShiftName = cfg.GetTunerTimeShiftLockName(i);
+        result.emplace_back(std::move(item));
+    }
+    return result;
+}
+
+static auto MainUiCaptureTunerGlobals_(const ConfigManager& cfg)
+{
+    return std::make_tuple(
+        cfg.GetTunersCount(),
+        cfg.GetTunerGlobalUseCommonBonDriver(),
+        cfg.GetTunerGlobalCommonBonDriverPath(),
+        cfg.GetBonDriverPath(),
+        cfg.GetBonDriverTerrestrialPath(),
+        cfg.GetBonDriverSatellitePath(),
+        cfg.GetBonDriverDefaultPath());
+}
+
+static auto MainUiCaptureScheduleConfig_(const ConfigManager& cfg)
+{
+    return std::make_tuple(
+        static_cast<int>(cfg.GetEpgAutoMode()),
+        cfg.GetEpgBootGraceSec(),
+        cfg.GetEpgCatchUpOnStart(),
+        cfg.GetEpgTickSeconds(),
+        cfg.GetEpgIdleRequiredSec(),
+        cfg.GetEpgEnableDailyFull(),
+        cfg.GetEpgDailyFullHHMM(),
+        cfg.GetEpgEnableHourly(),
+        cfg.GetEpgHourlyAtMinute(),
+        cfg.GetEpgLightUpdateIntervalMin());
+}
+
+// UIからtasks.iniを書き換えるタブもあるため、設定変更を検知する。
+static auto MainUiCaptureTasksIniStamp_()
+{
+    const std::filesystem::path path(GetDefaultTasksIniPath());
+    std::error_code ec;
+    const auto stamp = std::filesystem::last_write_time(path, ec);
+    const auto validStamp = ec
+        ? std::filesystem::file_time_type{}
+    : stamp;
+    ec.clear();
+    const auto size = std::filesystem::file_size(path, ec);
+    const std::uintmax_t validSize = ec ? 0u : size;
+    return std::make_pair(validStamp, validSize);
 }
 
 static int CalcTomorrowYmd()
@@ -566,7 +666,7 @@ bool MainUI::CreateAndShow(HINSTANCE inst, int nCmdShow)
 
     INITCOMMONCONTROLSEX icc{};
     icc.dwSize = sizeof(icc);
-	icc.dwICC = ICC_TAB_CLASSES | ICC_UPDOWN_CLASS | ICC_STANDARD_CLASSES | ICC_PROGRESS_CLASS;
+    icc.dwICC = ICC_TAB_CLASSES | ICC_UPDOWN_CLASS | ICC_STANDARD_CLASSES | ICC_PROGRESS_CLASS;
     InitCommonControlsEx(&icc);
 
     WNDCLASSEXW wc{};
@@ -598,7 +698,7 @@ bool MainUI::CreateAndShow(HINSTANCE inst, int nCmdShow)
     return true;
 }
 
-void MainUI::AppendLog(std::wstring_view text)
+void MainUI::AppendLog(std::wstring_view text) const
 {
     if (!hLog) return;
 
@@ -613,7 +713,7 @@ void MainUI::AppendLog(std::wstring_view text)
 /*
 LRESULT CALLBACK MainUI::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
-    
+
 
 
     MainUI* self = nullptr;
@@ -697,7 +797,7 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
         if (ev == WM_RBUTTONUP) {
             POINT pt{};
             GetCursorPos(&pt);
-            TrayShowMenu(hWnd, pt);
+            TrayShowMenu(hWnd, pt, tabPlugin);
             return 0;
         }
         return 0;
@@ -708,7 +808,50 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
             taskSystem_.OnTick();
             return 0;
         }
+        if (wp == TIMER_ID_CONFIG_REAPPLY) {
+            ApplyPendingConfigReload_();
+            return 0;
+        }
+        if (wp == TIMER_ID_SLEEP_WAKE) {
+            RefreshSleepWake_(false);
+            return 0;
+        }
         return DefWindowProcW(hWnd, msg, wp, lp);
+
+    case WM_APP_SLEEP_SETTINGS_CHANGED:
+        RefreshSleepWake_(wp != 0);
+        return 0;
+
+    case WM_APP_SLEEP_ACTIVITY_CHANGED:
+        RefreshSleepWake_(false);
+        return 0;
+
+    case WM_TIMECHANGE:
+        sleepWakeManager_.NotifyClockChanged();
+        RefreshSleepWake_(false);
+        return 0;
+
+    case WM_POWERBROADCAST:
+        if (wp == PBT_APMSUSPEND) {
+            sleepWakeManager_.OnSuspending();
+            return TRUE;
+        }
+        if (wp == PBT_APMRESUMEAUTOMATIC) {
+            sleepWakeManager_.OnResumeAutomatic();
+            RefreshSleepWake_(true);
+            return TRUE;
+        }
+        if (wp == PBT_APMRESUMESUSPEND) {
+            sleepWakeManager_.OnResumeUserActivity();
+            RefreshSleepWake_(false);
+            return TRUE;
+        }
+        return DefWindowProcW(hWnd, msg, wp, lp);
+
+        // チャンネルスキャンの実行状態が変化したら早めにスリープ抑止を更新。
+    case WM_APP_SCAN_RUNNING:
+        RefreshSleepWake_(false);
+        return 0;
 
     case WM_NOTIFY:
     {
@@ -734,6 +877,14 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
     case WM_COMMAND:
     {
         const int id = LOWORD(wp);
+
+        if (id >= static_cast<int>(PluginTab::TRAY_PLUGIN_COMMAND_FIRST) &&
+            id < static_cast<int>(PluginTab::TRAY_PLUGIN_COMMAND_LIMIT)) {
+            if (tabPlugin) {
+                (void)tabPlugin->ExecuteTrayPluginCommand(static_cast<UINT>(id));
+            }
+            return 0;
+        }
 
         if (id == IDC_TRAY_RESTORE) {
             TrayRestore(hWnd);
@@ -765,6 +916,14 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_DESTROY:
     {
+        // 保存済み設定の遅延反映が残っていても終了処理中には実行しない。
+        ::KillTimer(hWnd, TIMER_ID_CONFIG_REAPPLY);
+        ::KillTimer(hWnd, TIMER_ID_SLEEP_WAKE);
+        configApplyPending_ = false;
+        tunerConfigPending_ = false;
+        timeShiftReconfigurePending_ = false;
+        taskReloadPending_ = false;
+
         OutputDebugStringW(L"[WM_DESTROY] begin\n");
 
         TrayRemove(hWnd);
@@ -882,11 +1041,14 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
         }
 
 
+        // workerと予約監視停止後にのみ解除。録画中の自動スリープを避ける。
+        sleepWakeManager_.Shutdown();
+
         OutputDebugStringW(L"[WM_DESTROY] before registeredPages_.clear()\n");
         registeredPages_.clear();
         OutputDebugStringW(L"[WM_DESTROY] after registeredPages_.clear()\n");
 
-        
+
 
         if (hFont) {
             OutputDebugStringW(L"[WM_DESTROY] before DeleteObject(hFont)\n");
@@ -908,160 +1070,162 @@ LRESULT MainUI::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
 
         return 0;
     }
-        case WM_APP_EPG_LOG:
-        {
-            std::unique_ptr<std::wstring> p(reinterpret_cast<std::wstring*>(lp));
-            if (p) {
-                AppendLog(*p);
-            }
+    case WM_APP_EPG_LOG:
+    {
+        std::unique_ptr<std::wstring> p(reinterpret_cast<std::wstring*>(lp));
+        if (p) {
+            AppendLog(*p);
+        }
+        return 0;
+    }
+
+    case WM_APP_EPG_OVERALL:
+    {
+        std::unique_ptr<EpgOverallMsg> p(reinterpret_cast<EpgOverallMsg*>(lp));
+        if (p) {
+            wchar_t buf[128]{};
+            swprintf_s(buf, L"[EPG] overall %zu / %zu", p->done, p->total);
+            AppendLog(buf);
+            SetMainStatusText(buf);
+        }
+        return 0;
+    }
+
+    case WM_APP_EPG_CHSTART:
+    {
+        std::unique_ptr<EpgChStartMsg> p(reinterpret_cast<EpgChStartMsg*>(lp));
+        if (p) {
+            std::wstring msg = L"[EPG] channel start: space=" + std::to_wstring(p->space)
+                + L" ch=" + std::to_wstring(p->ch) + L" " + p->name;
+            AppendLog(msg);
+            SetMainStatusText(msg);
+        }
+        return 0;
+    }
+
+    case WM_APP_EPG_CYCLE:
+    {
+        std::unique_ptr<EpgCycleMsg> p(reinterpret_cast<EpgCycleMsg*>(lp));
+        if (p) {
+            wchar_t buf[256]{};
+            swprintf_s(buf,
+                L"[EPG] cycle: space=%d ch=%d cycle=%d raw=%zu store=%zu processed=%zu",
+                p->space, p->ch, p->cycle,
+                p->rawEvents, p->storeSize, p->processedPackets);
+            AppendLog(buf);
+            SetMainStatusText(buf);
+        }
+        return 0;
+    }
+
+    case WM_APP_EPG_DONE:
+    {
+        std::unique_ptr<EpgDoneMsg> p(reinterpret_cast<EpgDoneMsg*>(lp));
+
+        SetEpgTabBusyState_(false);
+        SetScanUiLocked(false);
+
+        if (!p) {
+            AppendLog(L"[EPG] 完了通知が不正です。");
+            SetMainStatusText(L"EPG 完了通知異常");
             return 0;
         }
 
-        case WM_APP_EPG_OVERALL:
+        switch (p->status) {
+        case EpgBuildGUI::Status::Ok:
         {
-            std::unique_ptr<EpgOverallMsg> p(reinterpret_cast<EpgOverallMsg*>(lp));
-            if (p) {
-                wchar_t buf[128]{};
-                swprintf_s(buf, L"[EPG] overall %zu / %zu", p->done, p->total);
-                AppendLog(buf);
-                SetMainStatusText(buf);
-            }
-            return 0;
-        }
-
-        case WM_APP_EPG_CHSTART:
-        {
-            std::unique_ptr<EpgChStartMsg> p(reinterpret_cast<EpgChStartMsg*>(lp));
-            if (p) {
-                std::wstring msg = L"[EPG] channel start: space=" + std::to_wstring(p->space)
-                    + L" ch=" + std::to_wstring(p->ch) + L" " + p->name;
-                AppendLog(msg);
-                SetMainStatusText(msg);
-            }
-            return 0;
-        }
-
-        case WM_APP_EPG_CYCLE:
-        {
-            std::unique_ptr<EpgCycleMsg> p(reinterpret_cast<EpgCycleMsg*>(lp));
-            if (p) {
-                wchar_t buf[256]{};
-                swprintf_s(buf,
-                    L"[EPG] cycle: space=%d ch=%d cycle=%d raw=%zu store=%zu processed=%zu",
-                    p->space, p->ch, p->cycle,
-                    p->rawEvents, p->storeSize, p->processedPackets);
-                AppendLog(buf);
-                SetMainStatusText(buf);
-            }
-            return 0;
-        }
-
-        case WM_APP_EPG_DONE:
-        {
-            std::unique_ptr<EpgDoneMsg> p(reinterpret_cast<EpgDoneMsg*>(lp));
-
-            SetEpgTabBusyState_(false);
-            SetScanUiLocked(false);
-
-            if (!p) {
-                AppendLog(L"[EPG] 完了通知が不正です。");
-                SetMainStatusText(L"EPG 完了通知異常");
-                return 0;
+            AppendLog(L"[EPG] 完了しました。");
+            if (!p->htmlPath.empty()) {
+                AppendLog(std::wstring(L"[EPG] HTML: ") + p->htmlPath);
             }
 
-            switch (p->status) {
-            case EpgBuildGUI::Status::Ok:
-            {
-                AppendLog(L"[EPG] 完了しました。");
-                if (!p->htmlPath.empty()) {
-                    AppendLog(std::wstring(L"[EPG] HTML: ") + p->htmlPath);
-                }
+            if (p->runReservationMaintenanceAfterBuild) {
+                AppendLog(L"[Reservation] EPG更新後の予約タスク再同期を開始します。");
 
-                if (p->runReservationMaintenanceAfterBuild) {
-                    AppendLog(L"[Reservation] EPG更新後の予約タスク再同期を開始します。");
+                const auto sync =
+                    taskSystem_.ReloadTasksAfterExternalEpgUpdate(false);
 
-                    const auto sync =
-                        taskSystem_.ReloadTasksAfterExternalEpgUpdate(false);
+                if (sync.ok) {
+                    AppendLog(
+                        L"[Reservation] EPG更新後の予約タスク再同期が完了しました。");
 
-                    if (sync.ok) {
+                    if (!sync.tasksIniPath.empty()) {
                         AppendLog(
-                            L"[Reservation] EPG更新後の予約タスク再同期が完了しました。");
-
-                        if (!sync.tasksIniPath.empty()) {
-                            AppendLog(
-                                std::wstring(L"[Reservation] tasks.ini: ") +
-                                sync.tasksIniPath);
-                        }
-                    }
-                    else {
-                        AppendLog(
-                            std::wstring(L"[Reservation] EPG更新後の予約タスク再同期に失敗しました。") +
-                            L" result=" +
-                            sync.message);
-
-                        if (!sync.tasksIniPath.empty()) {
-                            AppendLog(
-                                std::wstring(L"[Reservation] tasks.ini: ") +
-                                sync.tasksIniPath);
-                        }
+                            std::wstring(L"[Reservation] tasks.ini: ") +
+                            sync.tasksIniPath);
                     }
                 }
+                else {
+                    AppendLog(
+                        std::wstring(L"[Reservation] EPG更新後の予約タスク再同期に失敗しました。") +
+                        L" result=" +
+                        sync.message);
 
-                SetMainStatusText(L"EPG 完了");
-                break;
+                    if (!sync.tasksIniPath.empty()) {
+                        AppendLog(
+                            std::wstring(L"[Reservation] tasks.ini: ") +
+                            sync.tasksIniPath);
+                    }
+                }
             }
 
-            case EpgBuildGUI::Status::Cancelled:
-                AppendLog(L"[EPG] 中断しました。");
-                SetMainStatusText(L"EPG 中断");
-                break;
-
-            case EpgBuildGUI::Status::ChannelListMissing:
-                AppendLog(L"[EPG] channellist がありません。先にチャンネルスキャンが必要です。");
-                SetMainStatusText(L"channellist 不足");
-                break;
-
-            default:
-                AppendLog(L"[EPG] 失敗しました。");
-                SetMainStatusText(L"EPG 失敗");
-                break;
-            }
-
-            return 0;
+            SetMainStatusText(L"EPG 完了");
+            break;
         }
 
-        case WM_APP_RESERVATION_DATA_CHANGED:
-        {
-            if (tabEpg) {
-                tabEpg->NotifyReservationDataChanged();
-            }
+        case EpgBuildGUI::Status::Cancelled:
+            AppendLog(L"[EPG] 中断しました。");
+            SetMainStatusText(L"EPG 中断");
+            break;
 
-            if (tabReservation) {
-                tabReservation->ReloadFromConfig();
-            }
+        case EpgBuildGUI::Status::ChannelListMissing:
+            AppendLog(L"[EPG] channellist がありません。先にチャンネルスキャンが必要です。");
+            SetMainStatusText(L"channellist 不足");
+            break;
 
-            SetMainStatusText(L"予約データ更新を反映しました。");
-            return 0;
+        default:
+            AppendLog(L"[EPG] 失敗しました。");
+            SetMainStatusText(L"EPG 失敗");
+            break;
         }
 
-        case WM_APP_SCHEDULED_EPG_FULL:
-        {
-            AppendLog(L"[Task] スケジュールされた EPGフルスキャンを開始します。");
-            SetMainStatusText(L"スケジュールEPGフルスキャン開始");
+        RefreshSleepWake_(true);
+        return 0;
+    }
 
-            // 定時フル更新後だけ、終了済み予約の整理を許可する。
-            StartEpgTask_(false, true);
-            return 0;
+    case WM_APP_RESERVATION_DATA_CHANGED:
+    {
+        if (tabEpg) {
+            tabEpg->NotifyReservationDataChanged();
         }
 
-        case WM_APP_SCHEDULED_EPG_LIGHT:
-        {
-            AppendLog(L"[Task] スケジュールされた リアルタイム更新を開始します。");
-            SetMainStatusText(L"スケジュールEPG軽量更新開始");
-
-            StartEpgTask_(true, false);
-            return 0;
+        if (tabReservation) {
+            tabReservation->ReloadFromConfig();
         }
+
+        SetMainStatusText(L"予約データ更新を反映しました。");
+        RefreshSleepWake_(true);
+        return 0;
+    }
+
+    case WM_APP_SCHEDULED_EPG_FULL:
+    {
+        AppendLog(L"[Task] スケジュールされた EPGフルスキャンを開始します。");
+        SetMainStatusText(L"スケジュールEPGフルスキャン開始");
+
+        // 定時フル更新後だけ、終了済み予約の整理を許可する。
+        StartEpgTask_(false, true);
+        return 0;
+    }
+
+    case WM_APP_SCHEDULED_EPG_LIGHT:
+    {
+        AppendLog(L"[Task] スケジュールされた リアルタイム更新を開始します。");
+        SetMainStatusText(L"スケジュールEPG軽量更新開始");
+
+        StartEpgTask_(true, false);
+        return 0;
+    }
 
     default:
         return DefWindowProcW(hWnd, msg, wp, lp);
@@ -1087,13 +1251,25 @@ void MainUI::RegisterCorePages()
                 return false;
             }
 
-            return tabSettings->Create(
+            const bool created = tabSettings->Create(
                 parent,
                 rc,
                 hInst,
                 hFont,
                 [this]() -> GuiActions& { return actions; },
                 [this](std::wstring_view s) { AppendLog(s); });
+
+            if (created) {
+                // HWNDへのPostMessageのみ。SettingsTab内部からManagerには触れない。
+                tabSettings->SetSleepRuntimeCallback(
+                    [hwnd = hWnd](bool forceTasks) {
+                        if (::IsWindow(hwnd)) {
+                            ::PostMessageW(hwnd, WM_APP_SLEEP_SETTINGS_CHANGED,
+                                           forceTasks ? 1 : 0, 0);
+                        }
+                    });
+            }
+            return created;
         },
         [this](bool show) {
             if (tabSettings) tabSettings->Show(show);
@@ -1702,6 +1878,10 @@ void MainUI::OnCreate()
                     lease.tunerIndex,
                     lease.bon,
                     req);
+                // worker側からUI状態を直接触らず、通知だけ送る。
+                if (::IsWindow(hWnd)) {
+                    ::PostMessageW(hWnd, WM_APP_SLEEP_ACTIVITY_CHANGED, 0, 0);
+                }
             };
 
         cb.OnRecStart = [this](
@@ -1733,6 +1913,9 @@ void MainUI::OnCreate()
                     lease.tunerIndex,
                     lease.bon,
                     req);
+                if (::IsWindow(hWnd)) {
+                    ::PostMessageW(hWnd, WM_APP_SLEEP_ACTIVITY_CHANGED, 0, 0);
+                }
             };
 
         cb.OnRecStop = [this](
@@ -1767,6 +1950,9 @@ void MainUI::OnCreate()
                 // OnRecStop内でRawTsRecorderのworker joinとEIT flushが
                 // 完了した後にBonDriverを返却する。
                 ReleaseReservationTuner_(req.instance);
+                if (::IsWindow(hWnd)) {
+                    ::PostMessageW(hWnd, WM_APP_SLEEP_ACTIVITY_CHANGED, 0, 0);
+                }
             };
 
         cb.OnReservationDataChanged = [hwnd = hWnd]() {
@@ -1782,7 +1968,7 @@ void MainUI::OnCreate()
         else {
             AppendLog(L"[Task] TaskSystemConnector を初期化しました。");
 
-            
+
 
             EnsureReservationTunersLoaded_();
 
@@ -1797,9 +1983,113 @@ void MainUI::OnCreate()
             }
         }
 
-        
+
     }
     StartTimeShiftFromConfig_();
+
+    // 予約監視とタイムシフトの初期化完了後から復帰制御を有効にする。
+    ::SetTimer(hWnd, TIMER_ID_SLEEP_WAKE, 10000, nullptr);
+    RefreshSleepWake_(true);
+}
+
+void MainUI::RefreshSleepWake_(bool reloadTasks)
+{
+    // UIスレッド限定。録画・受信workerへ同期呼び出ししない。
+    if (reloadTasks) {
+        sleepWakeManager_.NotifyTasksChanged();
+    }
+
+    SleepWakeManager::Activity activity{};
+    activity.taskMonitorRunning = taskSystem_.IsRunning();
+    activity.channelScan = g_scanRunning.load(std::memory_order_acquire);
+    activity.epg = g_epgRunning.load(std::memory_order_acquire);
+
+    const auto ports = tunerPortManager_.GetStatuses();
+    for (const auto& port : ports) {
+        if (!port.acquired) continue;
+        switch (port.purpose) {
+        case TunerPortManager::Purpose::ReservationRecord:
+            activity.recording = true;
+            break;
+        case TunerPortManager::Purpose::EpgCapture:
+            activity.epg = true;
+            break;
+        case TunerPortManager::Purpose::TimeShift:
+            activity.timeShift = true;
+            break;
+        case TunerPortManager::Purpose::ChannelScan:
+            activity.channelScan = true;
+            break;
+        default:
+            activity.otherTuner = true;
+            break;
+        }
+    }
+
+    // 設定上のTimeShift専用チューナーではなく、worker実稼働を確認。
+    const auto timeShiftStates = timeShiftEngine_.GetStatuses();
+    for (const auto& item : timeShiftStates) {
+        if (item.workerRunning) {
+            activity.timeShift = true;
+            break;
+        }
+    }
+
+    const SleepWakeManager::Status state = sleepWakeManager_.Refresh(
+        ConfigManager::GetInstance(), activity, GetDefaultTasksIniPath());
+
+    if (tabSettings == nullptr) return;
+
+    std::wstring nextWake = L"なし";
+    if (state.nextWakeLocal > 0) {
+        nextWake = SleepWakeManager::FormatLocalTime(state.nextWakeLocal);
+        if (!state.sourceSection.empty()) {
+            nextWake += L" [";
+            nextWake += state.sourceSection;
+            nextWake += L"]";
+        }
+    }
+
+    std::wstring timerState;
+    if (!state.enabled) {
+        timerState = L"OFF（登録解除）";
+        nextWake = L"スリープ連動が無効";
+    }
+    else if (state.timerRegistered) {
+        timerState = L"登録済み";
+    }
+    else if (state.wakeImmediatelyRequired) {
+        timerState = L"予約が近いためスリープ抑止";
+    }
+    else if (!activity.taskMonitorRunning) {
+        timerState = L"予約監視が停止中";
+    }
+    else if (!state.taskSourceValid || state.lastError != ERROR_SUCCESS) {
+        timerState = L"登録/読み込み失敗 (Win32=";
+        timerState += std::to_wstring(state.lastError);
+        timerState += L")";
+    }
+    else {
+        timerState = L"次回の対象タスクなし";
+    }
+
+    std::wstring guardState;
+    if (!state.sleepBlockApiOk) {
+        guardState = L"APIエラー（抑止を確認できません）";
+    }
+    else if (state.sleepBlocked) {
+        guardState = L"スリープ抑止中";
+    }
+    else {
+        guardState = L"抑止なし";
+    }
+    if (activity.recording) guardState += L" / 録画";
+    if (activity.epg) guardState += L" / EPG";
+    if (activity.timeShift) guardState += L" / タイムシフト";
+    if (activity.channelScan) guardState += L" / スキャン";
+    if (activity.otherTuner) guardState += L" / 他のチューナー処理";
+
+    tabSettings->SetSleepRuntimeStatus(nextWake, timerState, guardState);
 }
 
 void MainUI::OnSize(int w, int h)
@@ -1959,11 +2249,17 @@ void MainUI::SaveAllTabsToConfigAndFile()
 {
     auto& cfg = ConfigManager::GetInstance();
 
+    // 設定変更前の実効値を保持し、不要な受信停止を回避する。
+    const auto beforeTuners = MainUiCaptureTunerConfig_(cfg);
+    const auto beforeTunerGlobals = MainUiCaptureTunerGlobals_(cfg);
+    const auto beforeSchedule = MainUiCaptureScheduleConfig_(cfg);
+    const auto beforeTasksIni = MainUiCaptureTasksIniStamp_();
+    const std::wstring beforeTimeShiftRoot = cfg.GetTimeShiftRootFolder();
+    const int beforeTimeShiftCapacity = cfg.GetTimeShiftMaxBytesGB();
+
+    // 1. 設定タブの値を先にConfigManagerへ適用。
     for (auto& page : registeredPages_) {
-        if (!page.created) {
-            continue;
-        }
-        if (page.title == L"設定" && page.apply) {
+        if (page.created && page.title == L"設定" && page.apply) {
             page.apply();
             break;
         }
@@ -1971,11 +2267,9 @@ void MainUI::SaveAllTabsToConfigAndFile()
 
     SyncDependentTabsFromConfig();
 
+    // 2. その他のタブから設定を取得。
     for (auto& page : registeredPages_) {
-        if (!page.created) {
-            continue;
-        }
-        if (page.title == L"設定") {
+        if (!page.created || page.title == L"設定") {
             continue;
         }
         if (page.apply) {
@@ -1983,22 +2277,154 @@ void MainUI::SaveAllTabsToConfigAndFile()
         }
     }
 
+    // 3. 既存仕様通りconfig.iniへ保存。
     cfg.SaveConfig();
 
-    reservationExecutionManager_.ConfigureFromConfig(cfg);
-
-    // 使用中のTimeShift Leaseを先に返却してからポート設定を作り直す。
-    StopTimeShift_();
-    EnsureReservationTunersLoaded_();
-
-    // ConfigManager::SaveConfig() が全体再生成型でも
-    // [Network] が消えないよう最後に再反映
-    if (tabNetwork) {
+    // NetworkSettingsTabはconfig.iniの[Network]へ直接書き込む。
+    // SaveConfigが全体再生成しても消えないよう最後に保存する。
+    if (tabNetwork != nullptr) {
         tabNetwork->ApplyToConfig();
     }
-    StartTimeShiftFromConfig_();
 
-    AppendLog(L"[GUI] すべての設定を保存しました。");
+    // 4. 保存先のconfig.iniを、再起動せず読み込み直す。
+    cfg.LoadConfig();
+
+    // スリープ設定は録画・チューナー再構成の待ち合わせ不要。
+    // 更新直後に復帰タイマーの登録/取消を反映する。
+    RefreshSleepWake_(false);
+
+    // RuntimeFlags / SystemInfoManagerは既存APIで更新する。
+    // DebugManagerの旧boolフラグは非atomicのため、稼働中スレッドと
+    // 競合し得るConfigureDebugMode()はここでは呼ばない。
+    RuntimeFlags::ApplyAfterConfigSaved();
+    SystemInfoManager::GetInstance().ConfigureSystemInfoMode();
+
+    // UI側のチューナー数依存項目も再同期。
+    SyncDependentTabsFromConfig();
+
+    // 5. 設定差分を検出する。
+    const bool tunerChanged =
+        beforeTuners != MainUiCaptureTunerConfig_(cfg) ||
+        beforeTunerGlobals != MainUiCaptureTunerGlobals_(cfg);
+
+    const bool timeShiftChanged =
+        tunerChanged ||
+        beforeTimeShiftRoot != cfg.GetTimeShiftRootFolder() ||
+        beforeTimeShiftCapacity != cfg.GetTimeShiftMaxBytesGB();
+
+    const bool scheduleChanged =
+        beforeSchedule != MainUiCaptureScheduleConfig_(cfg) ||
+        beforeTasksIni != MainUiCaptureTasksIniStamp_();
+
+    // 設定変更が稼働中の処理と衝突する場合は後で反映する。
+    // すでに保留中の変更は次の保存で取り消さない。
+    configApplyPending_ = true;
+    tunerConfigPending_ |= tunerChanged;
+    timeShiftReconfigurePending_ |= timeShiftChanged;
+    taskReloadPending_ |= (scheduleChanged || tunerChanged);
+
+    ApplyPendingConfigReload_();
+
+    AppendLog(L"[GUI] config.ini を保存し、設定を再読み込みしました。");
+
+    if (configApplyPending_) {
+        AppendLog(L"[GUI] 稼働中の処理があるため、一部の実行時設定の反映を保留しました。");
+        SetMainStatusText(L"設定保存済み（一部反映待ち）");
+    }
+    else {
+        SetMainStatusText(L"設定を保存・反映しました。");
+    }
+}
+
+void MainUI::ApplyPendingConfigReload_()
+{
+    if (!configApplyPending_) {
+        if (hWnd != nullptr && ::IsWindow(hWnd)) {
+            ::KillTimer(hWnd, TIMER_ID_CONFIG_REAPPLY);
+        }
+        return;
+    }
+
+    // EPG/スキャン/予約録画に使われているチューナーを再構成しない。
+    bool busy =
+        g_scanRunning.load(std::memory_order_acquire) ||
+        g_epgRunning.load(std::memory_order_acquire);
+
+    if (!busy) {
+        const auto statuses = tunerPortManager_.GetStatuses();
+        for (const auto& st : statuses) {
+            if (st.acquired &&
+                st.purpose != TunerPortManager::Purpose::TimeShift) {
+                busy = true;
+                break;
+            }
+        }
+    }
+
+    if (busy) {
+        if (hWnd != nullptr && ::IsWindow(hWnd)) {
+            // 待機中は止めず、実行完了後に再試行する。
+            ::SetTimer(hWnd, TIMER_ID_CONFIG_REAPPLY, 1500, nullptr);
+        }
+        return;
+    }
+
+    auto& cfg = ConfigManager::GetInstance();
+
+    // 予約マネージャーの新設定を反映。
+    reservationExecutionManager_.ConfigureFromConfig(cfg);
+
+    if (timeShiftReconfigurePending_) {
+        // タイムシフト設定が変わったときだけ受信側を再構成。
+        StopTimeShift_();
+
+        if (tunerConfigPending_) {
+            if (!taskSystem_.IsInitialized() ||
+                !EnsureReservationTunersLoaded_()) {
+                AppendLog(
+                    L"[GUI] チューナー設定の再構成に失敗しました。"
+                    L"設定は保存済みです。次回の保存操作で再試行できます。");
+                SetMainStatusText(L"設定保存済み（チューナー反映失敗）");
+                // 停止・再起動を周期的に繰り返さない。
+                if (hWnd != nullptr && ::IsWindow(hWnd)) {
+                    ::KillTimer(hWnd, TIMER_ID_CONFIG_REAPPLY);
+                }
+                return;
+            }
+        }
+
+        StartTimeShiftFromConfig_();
+        RefreshSleepWake_(false);
+        tunerConfigPending_ = false;
+        timeShiftReconfigurePending_ = false;
+        AppendLog(L"[GUI] チューナー・タイムシフト設定の再反映を実行しました。");
+    }
+
+    if (taskReloadPending_) {
+        // 既に必要なポート設定は反映済みなので、タスク側の
+        // 設定更新だけでBonDriverを再構成しない。
+        if (taskSystem_.IsInitialized()) {
+            if (!ReloadAndApplyTasks_(false)) {
+                AppendLog(
+                    L"[GUI] タスク設定の再反映に失敗しました。"
+                    L"設定は保存済みです。次回の保存操作で再試行できます。");
+                SetMainStatusText(L"設定保存済み（タスク反映失敗）");
+                if (hWnd != nullptr && ::IsWindow(hWnd)) {
+                    ::KillTimer(hWnd, TIMER_ID_CONFIG_REAPPLY);
+                }
+                return;
+            }
+        }
+        taskReloadPending_ = false;
+    }
+
+    tunerConfigPending_ = false;
+    configApplyPending_ = false;
+
+    if (hWnd != nullptr && ::IsWindow(hWnd)) {
+        ::KillTimer(hWnd, TIMER_ID_CONFIG_REAPPLY);
+    }
+    AppendLog(L"[GUI] 保存した設定の実行時反映が完了しました。");
 }
 
 void MainUI::ExitWithoutSave()
@@ -2056,7 +2482,7 @@ void MainUI::SetScanUiLocked(bool locked)
     }
 }
 
-void MainUI::SetMainStatusText(std::wstring_view text)
+void MainUI::SetMainStatusText(std::wstring_view text) const
 {
     if (!hStatus) return;
     std::wstring s(text);
@@ -2154,20 +2580,20 @@ void MainUI::StartTimeShiftFromConfig_()
         AppendLog(msg);
     }
 
-        SetMainStatusText(L"TimeShift 起動チェック完了");
+    SetMainStatusText(L"TimeShift 起動チェック完了");
 
-        if (tabTimeShiftViewer != nullptr) {
-            AppendLog(L"[TimeShift] Viewer側の番組一覧キャッシュ更新を要求します。");
-            DebugLog(L"[TimeShift] Viewer側の番組一覧キャッシュ更新を要求します。");
+    if (tabTimeShiftViewer != nullptr) {
+        AppendLog(L"[TimeShift] Viewer側の番組一覧キャッシュ更新を要求します。");
+        DebugLog(L"[TimeShift] Viewer側の番組一覧キャッシュ更新を要求します。");
 
-            tabTimeShiftViewer->ReloadFromConfig();
+        tabTimeShiftViewer->ReloadFromConfig();
 
-            DebugLog(L"[TimeShift] Viewer ReloadFromConfig returned");
-        }
-        else {
-            AppendLog(L"[TimeShift] Viewerタブが未作成のため、番組一覧キャッシュ更新を保留しました。");
-            DebugLog(L"[TimeShift] Viewerタブが未作成のため、番組一覧キャッシュ更新を保留しました。");
-        }
+        DebugLog(L"[TimeShift] Viewer ReloadFromConfig returned");
+    }
+    else {
+        AppendLog(L"[TimeShift] Viewerタブが未作成のため、番組一覧キャッシュ更新を保留しました。");
+        DebugLog(L"[TimeShift] Viewerタブが未作成のため、番組一覧キャッシュ更新を保留しました。");
+    }
 
 }
 
@@ -2562,41 +2988,41 @@ void MainUI::StartEpgTask_(
     try {
         g_epgThread = std::thread([this, bon, mode, opt, cb, runner,
             runReservationMaintenanceAfterBuild, epgLease]() mutable {
-        EpgBuildGUI::Result result{};
-        try {
-            result = runner->Run(bon, mode, opt, &cb);
-        }
-        catch (...) {
-            result.status = EpgBuildGUI::Status::InvalidArgument;
-            if (IsValidWnd(hWnd)) {
-                auto* p = new std::wstring(L"[EPG] 例外が発生しました。");
-                if (!PostMessageW(hWnd, WM_APP_EPG_LOG, 0, reinterpret_cast<LPARAM>(p))) {
-                    delete p;
+                EpgBuildGUI::Result result{};
+                try {
+                    result = runner->Run(bon, mode, opt, &cb);
                 }
-            }
-        }
+                catch (...) {
+                    result.status = EpgBuildGUI::Status::InvalidArgument;
+                    if (IsValidWnd(hWnd)) {
+                        auto* p = new std::wstring(L"[EPG] 例外が発生しました。");
+                        if (!PostMessageW(hWnd, WM_APP_EPG_LOG, 0, reinterpret_cast<LPARAM>(p))) {
+                            delete p;
+                        }
+                    }
+                }
 
-        // Run()が受信workerをすべて停止した後、HTML完了通知より先に
-        // EPG用ポートを完全解放する。
-        (void)tunerPortManager_.Release(epgLease);
+                // Run()が受信workerをすべて停止した後、HTML完了通知より先に
+                // EPG用ポートを完全解放する。
+                (void)tunerPortManager_.Release(epgLease);
 
-        g_epgRunning.store(false, std::memory_order_release);
+                g_epgRunning.store(false, std::memory_order_release);
 
-        if (IsValidWnd(hWnd)) {
-            auto* done = new EpgDoneMsg{};
-            done->status = result.status;
-            done->targetChannels = result.targetChannels;
-            done->processedChannels = result.processedChannels;
-            done->mergedEpgPath = result.mergedEpgPath;
-            done->htmlPath = result.htmlPath;
-            done->runReservationMaintenanceAfterBuild =
-                runReservationMaintenanceAfterBuild;
+                if (IsValidWnd(hWnd)) {
+                    auto* done = new EpgDoneMsg{};
+                    done->status = result.status;
+                    done->targetChannels = result.targetChannels;
+                    done->processedChannels = result.processedChannels;
+                    done->mergedEpgPath = result.mergedEpgPath;
+                    done->htmlPath = result.htmlPath;
+                    done->runReservationMaintenanceAfterBuild =
+                        runReservationMaintenanceAfterBuild;
 
-            if (!PostMessageW(hWnd, WM_APP_EPG_DONE, 0, reinterpret_cast<LPARAM>(done))) {
-                delete done;
-            }
-        }
-        });
+                    if (!PostMessageW(hWnd, WM_APP_EPG_DONE, 0, reinterpret_cast<LPARAM>(done))) {
+                        delete done;
+                    }
+                }
+            });
     }
     catch (...) {
         g_epgRunning.store(false, std::memory_order_release);
@@ -2632,12 +3058,12 @@ void MainUI::StopActiveTask_()
     SetMainStatusText(L"停止対象なし");
 }
 
-void MainUI::ReloadAndApplyTasks_()
+bool MainUI::ReloadAndApplyTasks_(bool reconfigureTuners)
 {
     if (!taskSystem_.IsInitialized()) {
         AppendLog(L"[Task] taskSystem_ が未初期化のため、タスクを反映できません。");
         SetMainStatusText(L"TaskSystem 未初期化");
-        return;
+        return false;
     }
 
     auto& cfg = ConfigManager::GetInstance();
@@ -2651,7 +3077,7 @@ void MainUI::ReloadAndApplyTasks_()
         if (!tl.SaveToIni(tasksIni)) {
             AppendLog(L"[Task] tasks.ini の作成に失敗しました。");
             SetMainStatusText(L"tasks.ini 作成失敗");
-            return;
+            return false;
         }
     }
 
@@ -2670,30 +3096,35 @@ void MainUI::ReloadAndApplyTasks_()
         taskSystem_.Stop(false);
     }
 
-    EnsureReservationTunersLoaded_();
+    if (reconfigureTuners && !EnsureReservationTunersLoaded_()) {
+        AppendLog(L"[Task] チューナー再設定に失敗しました。");
+        return false;
+    }
 
     if (!taskSystem_.LoadTasksFromIni(tasksIni)) {
         AppendLog(L"[Task] tasks.ini の再読込に失敗しました。");
         SetMainStatusText(L"tasks.ini 再読込失敗");
-        return;
+        return false;
     }
 
     if (!taskSystem_.ApplyTaskList()) {
         AppendLog(L"[Task] TaskSystemConnector への反映に失敗しました。");
         SetMainStatusText(L"タスク反映失敗");
-        return;
+        return false;
     }
 
     if (wasRunning) {
         if (!taskSystem_.Start()) {
             AppendLog(L"[Task] タスク監視の再開に失敗しました。");
             SetMainStatusText(L"タスク監視再開失敗");
-            return;
+            return false;
         }
     }
 
     AppendLog(L"[Task] tasks.ini を再読込し、TimeKeeper / TaskSystemConnector へ反映しました。");
     SetMainStatusText(L"タスク反映完了");
+    RefreshSleepWake_(true);
+    return true;
 }
 
 bool MainUI::EnsureReservationTunersLoaded_()

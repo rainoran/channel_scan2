@@ -13,6 +13,7 @@
 #include "MainUI.hpp"
 #include "ConfigManager.h"
 #include "DebugManager.h"
+#include "SystemInfoManager.hpp"
 #include "RuntimeFlags.hpp"
 
 #pragma comment(lib, "Comctl32.lib")
@@ -127,38 +128,100 @@ int APIENTRY wWinMain(
     InitCommonControlsOnce();
 
     int argc = 0;
-    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    LPWSTR* argv = ::CommandLineToArgvW(::GetCommandLineW(), &argc);
     const bool wantDebug =
         HasArg(argc, argv, L"--debug") ||
-        ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
-    if (argv) LocalFree(argv);
+        ((::GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+    if (argv) {
+        ::LocalFree(argv);
+    }
 
-    // ★ config.ini の生成/読み込み（exeフォルダ固定）
+    // config.iniの読み込み後、system.logを初めて開く前に容量を検査する。
     EnsureConfigIniInExeDir();
 
-    // DebugManager 設定反映
+    SystemInfoManager& systemLog = SystemInfoManager::GetInstance();
+    if (!systemLog.PrepareLogForStartup()) {
+        // 移動失敗時は元のsystem.logを残して起動を継続する。
+        ::OutputDebugStringW(
+            L"[GuiMain] startup system.log rotation failed; original retained.\n");
+    }
+
+    const wchar_t* const mode = wantDebug ? L"DEBUG" : L"GUI";
+    const unsigned long pid =
+        static_cast<unsigned long>(::GetCurrentProcessId());
+
+    SystemInfoLogInfo(
+        L"TSCEPG プログラムを起動しました。mode=%ls pid=%lu",
+        mode, pid);
+
+    // DebugManager設定の適用は従来通り。
     RuntimeFlags::ApplyAtStartup();
 
+    int exitCode = 1;
+    bool completedNormally = false;
+
     if (wantDebug) {
-        return RunDebugConsoleApp();
+        // Debug/CUI経路も同じsystem.logへ記録し、復帰後に退避判定する。
+        exitCode = RunDebugConsoleApp();
+        completedNormally = (exitCode == 0);
+    }
+    else {
+        // WM_DESTROYのworker停止に加え、MainUIのメンバ破棄が完了するまで
+        // system.logを停止しない（デストラクタ中のログ出力を阻害しない）。
+        {
+            MainUI ui;
+            ui.SetActions(GuiActions{});
+
+            if (ui.CreateAndShow(hInst, nCmdShow)) {
+                ui.AppendLog(L"[GUI] TSCEPG GUI started.");
+                DebugLog(L"%ls", L"[GUI] TSCEPG GUI started.");
+
+                MSG msg{};
+                BOOL getMessageResult = 0;
+                while ((getMessageResult = ::GetMessageW(
+                    &msg, nullptr, 0, 0)) > 0) {
+                    ::TranslateMessage(&msg);
+                    ::DispatchMessageW(&msg);
+                }
+
+                if (getMessageResult == -1) {
+                    const DWORD err = ::GetLastError();
+                    SystemInfoLogError(
+                        L"TSCEPG GUI メッセージループエラー。win32Error=%lu",
+                        static_cast<unsigned long>(err));
+                    exitCode = 1;
+                }
+                else {
+                    exitCode = static_cast<int>(msg.wParam);
+                    completedNormally = true;
+                }
+            }
+            else {
+                SystemInfoLogError(
+                    L"TSCEPG GUI のウィンドウ作成に失敗しました。");
+            }
+        } // MainUI::~MainUI() とメンバ破棄がここで完了
     }
 
-    MainUI ui;
-    ui.SetActions(GuiActions{});
-
-    if (!ui.CreateAndShow(hInst, nCmdShow)) {
-        return 1;
+    // 最終システムログ：必ず ShutdownAndRotate() より前に書く。
+    if (completedNormally) {
+        SystemInfoLogInfo(
+            L"TSCEPG プログラムを正常終了しました。mode=%ls pid=%lu exitCode=%d",
+            mode, pid, exitCode);
+    }
+    else {
+        SystemInfoLogWarn(
+            L"TSCEPG プログラムを終了しました（起動失敗または処理エラー）。mode=%ls pid=%lu exitCode=%d",
+            mode, pid, exitCode);
     }
 
-    ui.AppendLog(L"[GUI] TSCEPG GUI started.");
-    DebugLog(L"%s", L"[GUI] TSCEPG GUI started.");
-
-    MSG msg{};
-    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+    // 最終ログ出力後にファイル出力を遮断し、10MiB以上なら連番で退避。
+    if (!systemLog.ShutdownAndRotate()) {
+        // 停止後はSystemInfoLog*を呼ばない。
+        ::OutputDebugStringW(
+            L"[GuiMain] shutdown system.log rotation failed; original retained.\n");
     }
 
     FlushDebugLog();
-    return static_cast<int>(msg.wParam);
+    return exitCode;
 }

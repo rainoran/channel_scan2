@@ -1535,7 +1535,7 @@ namespace
     {
         AppendJsLine_(oss, L"(function(){");
         AppendJsLine_(oss, L"'use strict';");
-        
+
         AppendJsLine_(oss, L"var DATA_LOADED=false;");
         AppendJsLine_(oss, L"var DATA_LOADING=false;");
         AppendJsLine_(oss, L"var AUTO_RULES=[];");
@@ -1586,7 +1586,7 @@ namespace
 
         AppendJsLine_(oss, L"function makeAutoReserveIniText(){var out='[AutoReserveRules]\\n';out+=iniLine('Count',AUTO_RULES.length);out+=iniLine('NextId',nextAutoRuleId());out+='\\n';AUTO_RULES.forEach(function(r0,i){var r=normalizeAutoRule(r0);out+='[AutoReserveRule_'+String(i)+']\\n';out+=iniLine('Id',r.id);out+=iniLine('Enabled',r.enabled?1:0);out+=iniLine('Name',r.name);out+=iniLine('UseKeyword',r.useKeyword?1:0);out+=iniLine('Keyword',r.keyword);out+=iniLine('KeywordJoinMode',r.keywordJoinMode);out+=iniLine('UseExcludeKeyword',r.useExclude?1:0);out+=iniLine('ExcludeKeyword',r.excludeKeyword);out+=iniLine('ExcludeKeywordJoinMode',r.excludeJoinMode);out+=iniLine('TitleMatchMode',r.titleMatchMode);out+=iniLine('MatchTitle',r.matchTitle?1:0);out+=iniLine('MatchSummary',r.matchSummary?1:0);out+=iniLine('MatchExtended',r.matchExtended?1:0);out+=iniLine('TargetSpace',r.targetSpace);out+=iniLine('UseService',r.useService?1:0);out+=iniLine('ServiceName',r.serviceName);out+=iniLine('ServiceMatchMode','OR');out+=iniLine('UseGenre',r.useGenre?1:0);out+=iniLine('GenreName',r.genreName);out+=iniLine('GenreMatchMode',r.genreJoinMode);out+=iniLine('UseMinDuration',r.useMinDuration?1:0);out+=iniLine('MinDurationMinutes',r.minDurationMinutes);out+=iniLine('UseSearchTimeRange',r.useSearchTimeRange?1:0);out+=iniLine('SearchStartMinutes',r.searchStartMinutes);out+=iniLine('SearchEndMinutes',r.searchEndMinutes);out+=iniLine('SearchTimeWrap',r.searchTimeWrap?1:0);out+=iniLine('StartMinutes',r.useSearchTimeRange?r.searchStartMinutes:-1);out+=iniLine('EndMinutes',r.useSearchTimeRange?r.searchEndMinutes:-1);out+=iniLine('UseWeekday',r.useWeekday?1:0);out+=iniLine('Weekdays',r.weekdays);out+=iniLine('Priority',r.priority);out+=iniLine('PreMarginSeconds',r.preMarginSeconds);out+=iniLine('PostMarginSeconds',r.postMarginSeconds);out+=iniLine('CreateReservationEnabled',r.createReservationEnabled?1:0);out+=iniLine('DuplicatePolicy',r.duplicatePolicy);out+=iniLine('SkipDuplicate',r.skipDuplicate?1:0);out+=iniLine('ExcludeRerunLikeProgram',r.excludeRerun?1:0);out+=iniLine('ActionMode',r.actionMode);out+='\\n';});return out;}");
         AppendJsLine_(oss, L"function saveAutoRules(){var iniText=makeAutoReserveIniText();setStatus('自動予約ルール保存中...',false);return fetch(apiUrl(),{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:encodeForm({iniText:iniText}),cache:'no-store'}).then(function(res){return res.text().then(function(t){return {ok:res.ok,text:t,status:res.status,url:res.url};});}).then(function(r){var obj=null;try{obj=JSON.parse(r.text||'{}');}catch(_){}if(!r.ok||(obj&&obj.ok===false)){throw new Error((obj&&(obj.reason||obj.message))||('HTTP '+String(r.status)));}setStatus('auto_reserve_rules.ini へ自動予約ルールを登録しました。',false);return true;}).catch(function(e){setStatus('保存失敗: '+String(e&&e.message?e.message:e),true);return false;});}");
-        
+
         AppendJsLine_(oss, L"function addAutoRuleFromControls(){var rule=newAutoRuleFromControls();if(!rule){setStatus('キーワード、ジャンル、放送局、最小放送時間のいずれかを指定してください。',true);return;}AUTO_RULES.push(rule);saveAutoRules().then(function(ok){if(!ok){AUTO_RULES=AUTO_RULES.filter(function(r){return Number(r.id)!==Number(rule.id);});}});}");
         AppendJsLine_(oss, L"function addRuleFromTitle(title,service){var el=q('[data-search-keyword]');if(el)el.value=text(title);if(service)selectSingle('[data-search-service-list]',service,'all');addAutoRuleFromControls();}");
         AppendJsLine_(oss, L"function fillKeyword(title){var el=q('[data-search-keyword]');if(el){el.value=text(title);el.focus();}}");
@@ -1606,9 +1606,24 @@ namespace
         AppendJsLine_(oss, L"if(from){ev.preventDefault();addRuleFromTitle(from.getAttribute('data-rule-from-card')||'',from.getAttribute('data-rule-service')||'');return;}");
         AppendJsLine_(oss, L"});");
 
+        // 番組表からの ?mode=new&keyword=... を検索欄へ反映する。
+        // URLSearchParams が UTF-8 パーセントエンコードを復元するため、
+        // decodeURIComponent を重ねて呼ばないこと。
+        AppendJsLine_(oss, L"function applyKeywordFromUrl(){");
+        AppendJsLine_(oss, L"var params=new URLSearchParams(window.location.search);");
+        AppendJsLine_(oss, L"if(!params.has('keyword'))return;");
+        AppendJsLine_(oss, L"var value=params.get('keyword');");
+        AppendJsLine_(oss, L"if(value===null)return;");
+        AppendJsLine_(oss, L"var el=q('[data-search-keyword]');");
+        AppendJsLine_(oss, L"if(!el)return;");
+        AppendJsLine_(oss, L"el.value=value;");
+        AppendJsLine_(oss, L"el.dispatchEvent(new Event('input',{bubbles:true}));");
+        AppendJsLine_(oss, L"}");
+
         AppendJsLine_(oss, L"document.addEventListener('DOMContentLoaded',function(){");
         AppendJsLine_(oss, L"resetSelect('[data-search-genre-list]','all');");
         AppendJsLine_(oss, L"resetSelect('[data-search-service-list]','all');");
+        AppendJsLine_(oss, L"applyKeywordFromUrl();");
         AppendJsLine_(oss, L"});");
 
         AppendJsLine_(oss, L"})();");
@@ -1673,7 +1688,7 @@ namespace
         oss << L"</div>";
         oss << L"</div>\n";
 
-        
+
 
         oss << L"<label class=\"field\">";
         oss << L"<span>最小放送時間</span>";
@@ -1750,9 +1765,9 @@ namespace
         oss << L"</section>\n";
     }
 
-    
 
-    
+
+
 
     bool ContainsText_(
         std::wstring_view text,

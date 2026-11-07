@@ -25,6 +25,7 @@
 #include "TunerPortManager.hpp"
 
 #include "TimeShift_Engine.hpp"
+#include "SleepWakeManager.hpp"
 
 class SettingsTab;
 class ChannelScanTab;
@@ -48,7 +49,7 @@ public:
     bool CreateAndShow(HINSTANCE hInst, int nCmdShow);
     void SetActions(const GuiActions& a) { actions = a; }
 
-    void AppendLog(std::wstring_view text);
+    void AppendLog(std::wstring_view text) const;
 
 private:
     struct RegisteredPage
@@ -65,22 +66,23 @@ private:
         std::function<void()> onSelected;
     };
 
-	// ウィンドウプロシージャとメッセージハンドラー
+    // ウィンドウプロシージャとメッセージハンドラー
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp);
     LRESULT HandleMessage(UINT msg, WPARAM wp, LPARAM lp);
 
-	// メッセージハンドラー
+    // メッセージハンドラー
     void OnCreate();
     void OnSize(int w, int h);
     void OnTabChanged();
 
-	// メインボタン（保存/キャンセル/終了）押下時の処理。id は CtrlId() で指定した値。
+    // メインボタン（保存/キャンセル/終了）押下時の処理。id は CtrlId() で指定した値。
     void OnMainButton(int id);
     void SaveAllTabsToConfigAndFile();
+    void ApplyPendingConfigReload_();
     void ExitWithPrompt();
     void ExitWithoutSave();
 
-	// タブコントロールのクライアント領域を取得する。タブの位置とサイズを考慮している。
+    // タブコントロールのクライアント領域を取得する。タブの位置とサイズを考慮している。
     RECT GetTabPageRect() const;
 
     // 実行中など、保存・終了などの危険なUI操作をロックする必要があるときに呼ぶ。
@@ -88,25 +90,25 @@ private:
 // EPG実行中のタブ切替は許可し、チャンネルスキャン等の強いロック時だけ
 // WM_NOTIFY 側でタブ切替を戻す。
     void SetScanUiLocked(bool locked);
-    void SetMainStatusText(std::wstring_view text);
+    void SetMainStatusText(std::wstring_view text) const;
 
-	// ページの登録と管理
+    // ページの登録と管理
     void RegisterPage(RegisteredPage page);
     void RegisterCorePages();
     void RegisterPluginPages();
     void BuildPageRegistry();
 
-	// 登録されたページをすべて作成する。失敗しても途中まで作成されたページはそのまま残る。
+    // 登録されたページをすべて作成する。失敗しても途中まで作成されたページはそのまま残る。
     bool CreateRegisteredPages();
     void MoveRegisteredPages(const RECT& rcLocal);
     void ShowCurrentRegisteredPage();
     void SyncDependentTabsFromConfig();
 
-	// EPG自動取得タスク関連
+    // EPG自動取得タスク関連
     void InitGuiActions_();
     void StartEpgTask_(bool realtime, bool runReservationMaintenanceAfterBuild = false);
     void StopActiveTask_();
-    void ReloadAndApplyTasks_();
+    bool ReloadAndApplyTasks_(bool reconfigureTuners = true);
     bool EnsureReservationTunersLoaded_();
     void ResetReservationTuners_() noexcept;
     bool AcquireReservationTuner_(
@@ -120,6 +122,9 @@ private:
 
     void StartTimeShiftFromConfig_();
     void StopTimeShift_() noexcept;
+
+    // スリープ制御はUIスレッドだけで更新する。
+    void RefreshSleepWake_(bool reloadTasks = false);
 
 private:
     HINSTANCE hInst = nullptr;
@@ -143,7 +148,7 @@ private:
     TimeShiftViewerTab* tabTimeShiftViewer = nullptr;
     SystemResourceMonitorTab* tabResourceMonitor = nullptr;
     ReservationSettingsTab* tabReservation = nullptr;
-	PluginTab* tabPlugin = nullptr;
+    PluginTab* tabPlugin = nullptr;
     GuiDebugLogPipeTab* tabDebug = nullptr;
     NetworkSettingsTab* tabNetwork = nullptr;
 
@@ -156,7 +161,14 @@ private:
     bool scanUiLocked = false;
     bool pagesCreated_ = false;
 
+    // 保存後の設定反映を、予約録画/スキャン/EPG終了まで安全に待機する。
+    bool configApplyPending_ = false;
+    bool tunerConfigPending_ = false;
+    bool timeShiftReconfigurePending_ = false;
+    bool taskReloadPending_ = false;
+
     TaskSystemConnector taskSystem_{};
+    SleepWakeManager sleepWakeManager_{};
     Reservation_ExecutionManager reservationExecutionManager_{};
     TunerTaskHandle tunerHandle_{};
 

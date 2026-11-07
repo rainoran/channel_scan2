@@ -255,6 +255,36 @@ public:
     void SetUiWindowRect(int x, int y, int w, int h) noexcept;
     void SetUiLastTabIndex(int idx) noexcept { uiLastTabIndex = idx; }
 
+    // ---- Sleep settings ([Sleep]) ----
+    // 0: OSに任せる / 1: 予約終了後再スリープ / 2: 起動状態を維持
+    enum class SleepAfterWakeAction : int {
+        FollowWindows = 0,
+        SleepAfterReservations = 1,
+        KeepAwake = 2
+    };
+
+    bool GetSleepEnabled() const noexcept { return sleepEnabled; }
+    void SetSleepEnabled(bool value) noexcept { sleepEnabled = value; }
+
+    int GetSleepWakeLeadMinutes() const noexcept { return sleepWakeLeadMinutes; }
+    void SetSleepWakeLeadMinutes(int value) noexcept {
+        sleepWakeLeadMinutes = (value < 1) ? 1 : ((value > 120) ? 120 : value);
+    }
+
+    SleepAfterWakeAction GetSleepAfterWakeAction() const noexcept { return sleepAfterWakeAction; }
+    void SetSleepAfterWakeAction(SleepAfterWakeAction value) noexcept {
+        switch (value) {
+        case SleepAfterWakeAction::FollowWindows:
+        case SleepAfterWakeAction::SleepAfterReservations:
+        case SleepAfterWakeAction::KeepAwake:
+            sleepAfterWakeAction = value;
+            break;
+        default:
+            sleepAfterWakeAction = SleepAfterWakeAction::FollowWindows;
+            break;
+        }
+    }
+
     // ---- Tuners ----
     int GetTunersCount() const noexcept { return tunersCount; }
 
@@ -819,6 +849,10 @@ private:
     int uiWindowW = 1100;
     int uiWindowH = 720;
     int uiLastTabIndex = 0;
+
+    bool sleepEnabled = false;
+    int sleepWakeLeadMinutes = 5;
+    SleepAfterWakeAction sleepAfterWakeAction = SleepAfterWakeAction::FollowWindows;
 
     int tunersCount = 1;
 
